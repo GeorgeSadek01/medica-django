@@ -4,6 +4,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
+from django.db.models import Q
 from doctors.models import DoctorProfile
 from .serializers import RegisterSerializer, UserSerializer
 from .models import User
@@ -92,3 +93,88 @@ def logout(request):
 @permission_classes([IsAuthenticated])
 def me(request):
     return Response(UserSerializer(request.user).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_list(request):
+    if request.user.role != 'admin':
+        return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
+    queryset = User.objects.all()
+    search = request.query_params.get('search')
+    role = request.query_params.get('role')
+    is_active = request.query_params.get('is_active')
+    verified = request.query_params.get('verified')
+
+    if search:
+        queryset = queryset.filter(
+            Q(first_name__icontains=search) | Q(last_name__icontains=search) | Q(email__icontains=search)
+        )
+    if role:
+        queryset = queryset.filter(role=role)
+    if is_active is not None:
+        queryset = queryset.filter(is_active=is_active.lower() == 'true')
+    if verified is not None:
+        val = verified.lower() == 'true'
+        queryset = queryset.filter(verified=val)
+
+    serializer = UserSerializer(queryset, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_detail(request, pk):
+    if request.user.role != 'admin':
+        return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        user = User.objects.get(pk=pk)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+    serializer = UserSerializer(user)
+    return Response(serializer.data)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def user_update(request, pk):
+    try:
+        user = User.objects.get(pk=pk)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.user.role != 'admin' and request.user != user:
+        return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
+
+    allowed_fields = ['first_name', 'last_name', 'email', 'phone', 'avatar']
+    if request.user.role == 'admin':
+        allowed_fields += ['is_active', 'verified', 'role']
+
+    data = {k: v for k, v in request.data.items() if k in allowed_fields}
+    serializer = UserSerializer(user, data=data, partial=True)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer.save()
+    return Response(serializer.data)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def user_delete(request, pk):
+    if request.user.role != 'admin':
+        return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        user = User.objects.get(pk=pk)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    soft = request.data.get('soft', True)
+    if soft:
+        user.soft_delete()
+        return Response({
+            'id': user.id,
+            'is_active': user.is_active,
+            'deleted_at': user.deleted_at,
+        })
+    user.delete()
+    return Response({'deleted': True, 'id': pk})
