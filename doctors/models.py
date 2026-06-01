@@ -13,7 +13,7 @@ class DoctorProfile(models.Model):
     last_name = models.CharField(max_length=255)
     specialty = models.CharField(max_length=255, db_index=True)
     bio = models.TextField(default='', blank=True, max_length=1000)
-    contact = models.CharField(max_length=255, default='')
+    contact = models.CharField(max_length=255, default='', blank=True)
     session_price = models.IntegerField(default=0)
 
     def __str__(self):
@@ -21,7 +21,7 @@ class DoctorProfile(models.Model):
 
 
 class AvailabilityBlock(models.Model):
-    DAYS = [
+    DAYS_OF_WEEK = [
         ('Monday', 'Monday'),
         ('Tuesday', 'Tuesday'),
         ('Wednesday', 'Wednesday'),
@@ -36,7 +36,7 @@ class AvailabilityBlock(models.Model):
         on_delete=models.CASCADE,
         related_name='availability',
     )
-    day = models.CharField(max_length=10, choices=DAYS)
+    day = models.CharField(max_length=15, choices=DAYS_OF_WEEK)
     start_time = models.TimeField()
     end_time = models.TimeField()
 
