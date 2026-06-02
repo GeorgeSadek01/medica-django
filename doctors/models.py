@@ -34,6 +34,7 @@ class DoctorDocument(models.Model):
     identity_document = models.FileField(upload_to='doctor_documents/')
     medical_certificate = models.FileField(upload_to='doctor_documents/')
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     status = models.CharField(
         max_length=20,
         choices=Status.choices,

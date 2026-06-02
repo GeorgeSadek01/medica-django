@@ -9,7 +9,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
-from django.db.models import Q, Count
+from django.db.models import Exists, OuterRef, Q, Count
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
@@ -447,7 +447,12 @@ def admin_dashboard(request):
 
     total_patients = User.objects.filter(role='patient').count()
     total_doctors = User.objects.filter(role='doctor').count()
-    unverified_doctors = User.objects.filter(role='doctor', verified=False).count()
+    from doctors.models import DoctorDocument
+    rejected_docs = DoctorDocument.objects.filter(doctor=OuterRef('doctor_profile'), status='rejected')
+    unverified_doctors = User.objects.filter(
+        role='doctor',
+        verified=False,
+    ).exclude(Exists(rejected_docs)).count()
 
     appt_counts = Appointment.objects.aggregate(
         total=Count('id'),

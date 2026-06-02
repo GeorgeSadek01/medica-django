@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.utils import timezone
+from django.utils import timezone as djangotime
 from django.db.models import Count, Q
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -47,17 +47,15 @@ class DoctorProfileViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='dashboard')
     def dashboard_overview(self, request):
         doctor = request.user.doctor_profile
-        today = timezone.now().date()
 
-        upcoming_appointments = Appointment.objects.filter(
-                doctor=doctor,
-                date__gte=today,
-                status__in=[Appointment.Status.PENDING, Appointment.Status.CONFIRMED]
-            ).order_by('date', 'time')
-
-        past_appointments = Appointment.objects.filter(
+        confirmed_appointments = Appointment.objects.filter(
             doctor=doctor,
-            date__lt=today
+            status__in=[Appointment.Status.CONFIRMED, Appointment.Status.COMPLETED]
+        ).order_by('date', 'time')
+
+        cancelled_appointments = Appointment.objects.filter(
+            doctor=doctor,
+            status=Appointment.Status.CANCELLED
         ).order_by('-date', '-time')
 
         stats = Appointment.objects.filter(doctor=doctor).aggregate(
@@ -65,16 +63,17 @@ class DoctorProfileViewSet(viewsets.ModelViewSet):
             pending_count=Count('id', filter=Q(status=Appointment.Status.PENDING)),
             confirmed_count=Count('id', filter=Q(status=Appointment.Status.CONFIRMED)),
             completed_count=Count('id', filter=Q(status=Appointment.Status.COMPLETED)),
-            cancelled_count=Count('id', filter=Q(status=Appointment.Status.CANCELLED))
+            cancelled_count=Count('id', filter=Q(status=Appointment.Status.CANCELLED)),
+            confirmed_and_completed_count=Count('id', filter=Q(status__in=[Appointment.Status.CONFIRMED, Appointment.Status.COMPLETED]))
         )
 
-        upcoming_serializer = AppointmentSerializer(upcoming_appointments, many=True)
-        past_serializer = AppointmentSerializer(past_appointments, many=True)
+        confirmed_serializer = AppointmentSerializer(confirmed_appointments, many=True)
+        cancelled_serializer = AppointmentSerializer(cancelled_appointments, many=True)
 
         return Response({
             "statistics": stats,
-            "upcoming_appointments": upcoming_serializer.data,
-            "past_appointments": past_serializer.data
+            "confirmed_appointments": confirmed_serializer.data,
+            "cancelled_appointments": cancelled_serializer.data
         })
 
 
@@ -238,6 +237,7 @@ def upload_documents(request):
         existing.medical_certificate = certificate
         existing.status = 'pending'
         existing.rejection_reason = ''
+        existing.uploaded_at = djangotime.now()
         existing.save()
         doc = existing
     else:
@@ -283,6 +283,7 @@ def document_list(request):
             'status': d.status,
             'rejection_reason': d.rejection_reason,
             'uploaded_at': d.uploaded_at.isoformat(),
+            'updated_at': d.updated_at.isoformat() if d.updated_at else None,
         })
 
     return Response(data)
@@ -307,10 +308,12 @@ def review_document(request, pk):
     doc.rejection_reason = request.data.get('rejection_reason', '')
     doc.save()
 
+    user = doc.doctor.user
     if new_status == 'approved':
-        user = doc.doctor.user
         user.verified = True
-        user.save(update_fields=['verified'])
+    else:
+        user.verified = False
+    user.save(update_fields=['verified'])
 
     return Response({
         'id': doc.id,
