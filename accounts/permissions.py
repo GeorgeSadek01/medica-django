@@ -13,8 +13,10 @@ class IsPatient(BasePermission):
         return request.user.is_authenticated and request.user.role == 'patient'
 
 class IsAdminOrSelf(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated
+
     def has_object_permission(self, request, view, obj):
         return (
-            request.user.is_authenticated and
-            (request.user.role == 'admin' or request.user.id == obj.id)
+            request.user.role == 'admin' or request.user.id == obj.id
         )

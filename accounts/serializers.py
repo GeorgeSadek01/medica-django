@@ -43,6 +43,13 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
             'verified', 'role',
         ]
 
+    def validate_email(self, value):
+        if self.instance and self.instance.email.lower() == value.lower():
+            return value
+        if User.objects.filter(email__iexact=value).exclude(pk=self.instance.pk if self.instance else None).exists():
+            raise serializers.ValidationError('This email is already in use.')
+        return value
+
     def validate_phone(self, value):
         if value and not value.isdigit():
             raise serializers.ValidationError('Phone must contain digits only.')

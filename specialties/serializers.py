@@ -8,6 +8,9 @@ class SpecialtySerializer(serializers.ModelSerializer):
         fields = ['id', 'name']
 
     def validate_name(self, value):
-        if Specialty.objects.filter(name__iexact=value).exists():
+        qs = Specialty.objects.filter(name__iexact=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
             raise serializers.ValidationError('Specialty with this name already exists.')
         return value

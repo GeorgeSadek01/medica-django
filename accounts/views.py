@@ -124,11 +124,13 @@ def user_list(request):
         users = users.filter(role=role)
 
     if is_active is not None:
+        if is_active.lower() not in ('true', 'false'):
+            return Response({'error': 'is_active must be "true" or "false".'}, status=status.HTTP_400_BAD_REQUEST)
         users = users.filter(is_active=is_active.lower() == 'true')
-    else:
-        users = users.filter(is_active=True)
 
     if verified is not None:
+        if verified.lower() not in ('true', 'false'):
+            return Response({'error': 'verified must be "true" or "false".'}, status=status.HTTP_400_BAD_REQUEST)
         users = users.filter(verified=verified.lower() == 'true')
 
     serializer = UserSerializer(users, many=True)

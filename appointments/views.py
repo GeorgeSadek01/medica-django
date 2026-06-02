@@ -16,7 +16,7 @@ def appointment_list(request):
         appointments = Appointment.objects.all()
 
     elif user.role == 'doctor':
-        appointments = Appointment.objects.filter(doctor=user.id)
+        appointments = Appointment.objects.filter(doctor__user=user)
 
     else:
         appointments = Appointment.objects.filter(patient=user)
@@ -89,7 +89,7 @@ def appointment_detail(request, pk):
         )
         if serializer.is_valid():
             serializer.save()
-            return Response(AppointmentSerializer(appointment).data)
+            return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     if request.method == 'DELETE':
