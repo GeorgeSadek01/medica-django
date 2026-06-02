@@ -94,8 +94,8 @@ def register(request):
     if settings.EMAIL_HOST:
         try:
             send_verification_email(user)
-        except Exception:
-            logger.exception("Failed to send verification email to %s", user.email)
+        except Exception as e:
+            logger.exception("Failed to send verification email to %s: %s: %s", user.email, type(e).__name__, e)
     else:
         user.email_verified = True
         user.save(update_fields=['email_verified'])

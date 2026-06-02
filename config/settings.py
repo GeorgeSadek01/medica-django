@@ -136,7 +136,7 @@ if EMAIL_HOST:
     EMAIL_USE_TLS = os.environ.get('SMTP_PORT', '587') == '587'
     EMAIL_HOST_USER = os.environ.get('SMTP_USER', '')
     EMAIL_HOST_PASSWORD = os.environ.get('SMTP_PASS', '')
-    EMAIL_TIMEOUT = 10
+    EMAIL_TIMEOUT = int(os.environ.get('SMTP_TIMEOUT', 60))
 else:
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@medica.com')
