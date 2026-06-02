@@ -12,7 +12,5 @@ urlpatterns = [
     path('', views.doctor_list, name='doctor-list'),
     path('<int:pk>/', views.doctor_detail, name='doctor-detail'),
     path('<int:pk>/availability/', views.doctor_availability, name='doctor-availability'),
-    path('<int:pk>/availability/create/', views.add_availability, name='add-availability'),
-    path('<int:pk>/availability/<int:slot_id>/', views.update_availability, name='update-availability'),
-    path('<int:pk>/availability/<int:slot_id>/delete/', views.delete_availability, name='delete-availability'),
+    path('<int:pk>/availability/<int:slot_id>/', views.doctor_availability, name='doctor-availability-slot'),
 ]

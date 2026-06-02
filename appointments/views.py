@@ -3,6 +3,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q
 from django.db import transaction
 from django.conf import settings
@@ -12,6 +13,21 @@ from .models import Appointment
 from .serializers import AppointmentSerializer, AppointmentCreateSerializer, AppointmentUpdateSerializer
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+ALLOWED_TRANSITIONS = {
+    Appointment.Status.PENDING: [Appointment.Status.CONFIRMED, Appointment.Status.CANCELLED],
+    Appointment.Status.CONFIRMED: [Appointment.Status.CANCELLED, Appointment.Status.COMPLETED],
+    Appointment.Status.CANCELLED: [],
+    Appointment.Status.COMPLETED: [],
+}
+
+
+def validate_transition(appointment, new_status):
+    if new_status and new_status != appointment.status:
+        allowed = ALLOWED_TRANSITIONS.get(appointment.status, [])
+        if new_status not in allowed:
+            return False, f"Cannot transition from '{appointment.status}' to '{new_status}'."
+    return True, None
 
 
 class DoctorAppointmentViewSet(viewsets.ModelViewSet):
@@ -27,31 +43,35 @@ class DoctorAppointmentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='approve')
     def approve_appointment(self, request, pk=None):
         appointment = self.get_object()
+        ok, err = validate_transition(appointment, Appointment.Status.CONFIRMED)
+        if not ok:
+            return Response({'error': err}, status=status.HTTP_400_BAD_REQUEST)
         appointment.status = Appointment.Status.CONFIRMED
         appointment.save()
-
         serializer = self.get_serializer(appointment)
         return Response({"message": "Appointment confirmed successfully", "appointment": serializer.data})
 
     @action(detail=True, methods=['post'], url_path='reject')
     def reject_appointment(self, request, pk=None):
         appointment = self.get_object()
+        ok, err = validate_transition(appointment, Appointment.Status.CANCELLED)
+        if not ok:
+            return Response({'error': err}, status=status.HTTP_400_BAD_REQUEST)
         appointment.status = Appointment.Status.CANCELLED
         appointment.save()
-
         serializer = self.get_serializer(appointment)
         return Response({"message": "Appointment cancelled successfully", "appointment": serializer.data})
 
     @action(detail=True, methods=['post'], url_path='add-notes')
     def add_doctor_notes(self, request, pk=None):
         appointment = self.get_object()
-
+        ok, err = validate_transition(appointment, Appointment.Status.COMPLETED)
+        if not ok:
+            return Response({'error': err}, status=status.HTTP_400_BAD_REQUEST)
         notes = request.data.get('doctor_notes', '')
         appointment.doctor_notes = notes
-
         appointment.status = Appointment.Status.COMPLETED
         appointment.save()
-
         serializer = self.get_serializer(appointment)
         return Response({
             "message": "Doctor notes added and appointment marked as completed",
@@ -69,7 +89,6 @@ class PatientAppointmentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = self.request.user
         doctor_profile = serializer.validated_data['doctor']
-
         serializer.save(
             patient=user,
             patient_name=f"{user.first_name} {user.last_name}".strip() or user.username,
@@ -79,7 +98,11 @@ class PatientAppointmentViewSet(viewsets.ModelViewSet):
         )
 
 
-# ===== Function-based views for appointments =====
+class AppointmentPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -121,17 +144,12 @@ def appointment_list(request):
     if date_to:
         queryset = queryset.filter(date__lte=date_to)
 
-    try:
-        page = int(request.query_params.get('page', 1))
-        page_size = int(request.query_params.get('page_size', 20))
-    except (ValueError, TypeError):
-        page = 1
-        page_size = 20
-    page = max(page, 1)
-    page_size = max(page_size, 1)
-    start = (page - 1) * page_size
-    end = start + page_size
-    queryset = queryset.order_by('-date', '-time')[start:end]
+    queryset = queryset.order_by('-date', '-time')
+    paginator = AppointmentPagination()
+    page = paginator.paginate_queryset(queryset, request)
+    if page is not None:
+        serializer = AppointmentSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     serializer = AppointmentSerializer(queryset, many=True)
     return Response(serializer.data)
@@ -165,7 +183,7 @@ def appointment_create(request):
 
     serializer = AppointmentCreateSerializer(data=request.data, context={'request': request})
     if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Validation failed', 'field_errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
     doctor = serializer.validated_data['doctor']
     date = serializer.validated_data['date']
@@ -249,14 +267,18 @@ def appointment_update(request, pk):
 
     serializer = AppointmentUpdateSerializer(appointment, data=request.data, partial=True)
     if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Validation failed', 'field_errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
     status_value = serializer.validated_data.get('status')
 
-    if status_value == 'confirmed':
-        serializer.validated_data['paid'] = True
+    if status_value:
+        ok, err = validate_transition(appointment, status_value)
+        if not ok:
+            return Response({'error': err}, status=status.HTTP_400_BAD_REQUEST)
+        if status_value == 'confirmed':
+            serializer.validated_data['paid'] = True
 
-    if status_value == 'pending' and ('date' in serializer.validated_data or 'time_slot' in serializer.validated_data):
+    if 'date' in serializer.validated_data or 'time_slot' in serializer.validated_data:
         doctor = appointment.doctor
         date_val = serializer.validated_data.get('date', appointment.date)
         slot_val = serializer.validated_data.get('time_slot', appointment.time_slot)

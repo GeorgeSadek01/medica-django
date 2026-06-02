@@ -5,13 +5,12 @@ from django.db.models import Count, Q
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import BasePermission
 from appointments.models import Appointment
 from appointments.serializers import AppointmentSerializer
 
 from .models import DoctorProfile, AvailabilityBlock
 from .serializers import DoctorProfileSerializer, AvailabilityBlockSerializer
-
-from rest_framework.permissions import BasePermission
 
 
 class IsDoctorUser(BasePermission):
@@ -129,85 +128,80 @@ def doctor_list(request):
     return Response(serializer.data)
 
 
-@api_view(['GET'])
+@api_view(['GET', 'PATCH'])
 @permission_classes([AllowAny])
 def doctor_detail(request, pk):
     try:
         doctor = DoctorProfile.objects.select_related('user').get(pk=pk, user__is_active=True)
     except DoctorProfile.DoesNotExist:
         return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
-    serializer = DoctorProfileSerializer(doctor)
-    return Response(serializer.data)
+
+    if request.method == 'GET':
+        serializer = DoctorProfileSerializer(doctor)
+        return Response(serializer.data)
+
+    if request.method == 'PATCH':
+        user = request.user
+        if not user.is_authenticated:
+            return Response({'error': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        is_doctor_owner = hasattr(user, 'doctor_profile') and user.doctor_profile.pk == doctor.pk
+        if user.role != 'admin' and not is_doctor_owner:
+            return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = DoctorProfileSerializer(doctor, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(serializer.data)
 
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def doctor_availability(request, pk):
-    try:
-        doctor = DoctorProfile.objects.get(pk=pk, user__is_active=True)
-    except DoctorProfile.DoesNotExist:
-        return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
-    blocks = doctor.availability.all()
-    serializer = AvailabilityBlockSerializer(blocks, many=True)
-    return Response(serializer.data)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def add_availability(request, pk):
-    try:
-        doctor = DoctorProfile.objects.get(pk=pk, user__is_active=True)
-    except DoctorProfile.DoesNotExist:
-        return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    if request.user.role != 'admin' and request.user.doctor_profile != doctor:
-        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
-
-    serializer = AvailabilityBlockSerializer(data=request.data)
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    serializer.save(doctor=doctor)
-    return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-
-@api_view(['PUT', 'PATCH'])
-@permission_classes([IsAuthenticated])
-def update_availability(request, pk, slot_id):
+@api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
+def doctor_availability(request, pk, slot_id=None):
     try:
         doctor = DoctorProfile.objects.get(pk=pk, user__is_active=True)
     except DoctorProfile.DoesNotExist:
         return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    if request.user.role != 'admin' and request.user.doctor_profile != doctor:
-        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    # GET — public
+    if request.method == 'GET' and slot_id is None:
+        blocks = doctor.availability.all()
+        serializer = AvailabilityBlockSerializer(blocks, many=True)
+        return Response(serializer.data)
 
+    # Mutations require auth
+    if request.method != 'GET':
+        user = request.user
+        if not user.is_authenticated:
+            return Response({'error': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        is_doctor_owner = hasattr(user, 'doctor_profile') and user.doctor_profile.pk == doctor.pk
+        if user.role != 'admin' and not is_doctor_owner:
+            return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    # POST — create
+    if request.method == 'POST':
+        serializer = AvailabilityBlockSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save(doctor=doctor)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    # Operations on a specific slot
     try:
         slot = doctor.availability.get(pk=slot_id)
-    except AvailabilityBlock.DoesNotExist:
+    except (AvailabilityBlock.DoesNotExist, TypeError):
         return Response({'error': 'Availability slot not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    serializer = AvailabilityBlockSerializer(slot, data=request.data, partial=request.method == 'PATCH')
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    serializer.save()
-    return Response(serializer.data)
+    # PUT/PATCH — update
+    if request.method in ('PUT', 'PATCH'):
+        serializer = AvailabilityBlockSerializer(slot, data=request.data, partial=request.method == 'PATCH')
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(serializer.data)
 
+    # DELETE
+    if request.method == 'DELETE':
+        slot.delete()
+        return Response({'deleted': True, 'id': slot_id})
 
-@api_view(['DELETE'])
-@permission_classes([IsAuthenticated])
-def delete_availability(request, pk, slot_id):
-    try:
-        doctor = DoctorProfile.objects.get(pk=pk, user__is_active=True)
-    except DoctorProfile.DoesNotExist:
-        return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    if request.user.role != 'admin' and request.user.doctor_profile != doctor:
-        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
-
-    try:
-        slot = doctor.availability.get(pk=slot_id)
-    except AvailabilityBlock.DoesNotExist:
-        return Response({'error': 'Availability slot not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-    slot.delete()
-    return Response({'deleted': True, 'id': slot_id})
+    return Response({'error': 'Method not allowed.'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
