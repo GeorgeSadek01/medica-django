@@ -129,13 +129,17 @@ SIMPLE_JWT = {
 }
 
 # Email Configuration
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = os.environ.get('SMTP_HOST', '')
-EMAIL_PORT = int(os.environ.get('SMTP_PORT', 587))
-EMAIL_USE_TLS = os.environ.get('SMTP_PORT', '587') == '587'
-EMAIL_HOST_USER = os.environ.get('SMTP_USER', '')
-EMAIL_HOST_PASSWORD = os.environ.get('SMTP_PASS', '')
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', '')
+if EMAIL_HOST:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_PORT = int(os.environ.get('SMTP_PORT', 587))
+    EMAIL_USE_TLS = os.environ.get('SMTP_PORT', '587') == '587'
+    EMAIL_HOST_USER = os.environ.get('SMTP_USER', '')
+    EMAIL_HOST_PASSWORD = os.environ.get('SMTP_PASS', '')
+    EMAIL_TIMEOUT = 10
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@medica.com')
 
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
