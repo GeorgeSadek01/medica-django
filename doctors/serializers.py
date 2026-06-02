@@ -3,6 +3,9 @@ from .models import DoctorProfile, AvailabilityBlock
 
 
 class AvailabilityBlockSerializer(serializers.ModelSerializer):
+    start_time = serializers.TimeField(format='%H:%M')
+    end_time = serializers.TimeField(format='%H:%M')
+
     class Meta:
         model = AvailabilityBlock
         fields = ['id', 'day', 'start_time', 'end_time']

@@ -4,6 +4,8 @@ from doctors.models import AvailabilityBlock
 
 
 class AppointmentSerializer(serializers.ModelSerializer):
+    time = serializers.TimeField(format='%H:%M')
+
     class Meta:
         model = Appointment
         fields = [
