@@ -41,12 +41,7 @@ def register(request):
         user.verified = False
         user.save(update_fields=['verified'])
 
-    refresh = RefreshToken.for_user(user)
-    return Response({
-        'user': UserSerializer(user).data,
-        'access': str(refresh.access_token),
-        'refresh': str(refresh),
-    }, status=status.HTTP_201_CREATED)
+    return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST'])
@@ -175,13 +170,18 @@ def user_detail(request, pk):
         if serializer.is_valid():
             serializer.save()
             return Response(UserSerializer(user).data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Validation failed', 'field_errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
     if request.method == 'DELETE':
         if request.user.role != 'admin':
             return Response(
                 {'error': 'Permission denied.'},
                 status=status.HTTP_403_FORBIDDEN
+            )
+        if not request.data.get('soft'):
+            return Response(
+                {'error': 'soft must be true to delete.'},
+                status=status.HTTP_400_BAD_REQUEST
             )
         user.soft_delete()
         return Response({

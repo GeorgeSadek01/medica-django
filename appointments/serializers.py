@@ -96,7 +96,7 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
 class AppointmentUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Appointment
-        fields = ['status', 'doctor_notes', 'date', 'time_slot', 'time']
+        fields = ['status', 'doctor_notes', 'date', 'time_slot', 'time', 'paid']
 
     def validate_date(self, value):
         from datetime import date

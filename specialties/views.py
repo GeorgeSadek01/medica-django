@@ -15,17 +15,18 @@ def specialty_list(request):
         serializer = SpecialtySerializer(specialties, many=True)
         return Response(serializer.data)
 
+    if request.user.is_anonymous or request.user.role != 'admin':
+        return Response(
+            {'error': 'Permission denied.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
     if request.method == 'POST':
-        if not request.user.is_authenticated or request.user.role != 'admin':
-            return Response(
-                {'error': 'Permission denied.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
         serializer = SpecialtySerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Validation failed', 'field_errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
@@ -59,7 +60,7 @@ def specialty_detail(request, pk):
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Validation failed', 'field_errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
     if request.method == 'DELETE':
         specialty_id = specialty.id

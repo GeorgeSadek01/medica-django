@@ -24,6 +24,17 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
         model = DoctorProfile
         fields = ['id', 'first_name', 'last_name', 'specialty', 'bio', 'contact', 'session_price', 'availability', 'bookedSlots']
 
+    def validate_specialty(self, value):
+        from specialties.models import Specialty
+        if not Specialty.objects.filter(name__iexact=value).exists():
+            raise serializers.ValidationError(f"Specialty '{value}' does not exist.")
+        return value
+
+    def validate_contact(self, value):
+        if not value:
+            raise serializers.ValidationError('Contact is required.')
+        return value
+
     def get_bookedSlots(self, obj):
         from appointments.models import Appointment
         slots = {}

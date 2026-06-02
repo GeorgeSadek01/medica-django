@@ -35,7 +35,7 @@ class DoctorProfileViewSet(viewsets.ModelViewSet):
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Validation failed', 'field_errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['get'], url_path='availability-slots', permission_classes=[IsAuthenticated])
     def get_availability_slots(self, request, pk=None):
@@ -118,12 +118,6 @@ def doctor_list(request):
             Q(specialty__icontains=search)
         )
 
-    paginator = DoctorPagination()
-    page = paginator.paginate_queryset(queryset, request)
-    if page is not None:
-        serializer = DoctorProfileSerializer(page, many=True)
-        return paginator.get_paginated_response(serializer.data)
-
     serializer = DoctorProfileSerializer(queryset, many=True)
     return Response(serializer.data)
 
@@ -150,7 +144,7 @@ def doctor_detail(request, pk):
 
         serializer = DoctorProfileSerializer(doctor, data=request.data, partial=True)
         if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Validation failed', 'field_errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
         serializer.save()
         return Response(serializer.data)
 
@@ -181,7 +175,7 @@ def doctor_availability(request, pk, slot_id=None):
     if request.method == 'POST':
         serializer = AvailabilityBlockSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Validation failed', 'field_errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
         serializer.save(doctor=doctor)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -195,7 +189,7 @@ def doctor_availability(request, pk, slot_id=None):
     if request.method in ('PUT', 'PATCH'):
         serializer = AvailabilityBlockSerializer(slot, data=request.data, partial=request.method == 'PATCH')
         if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Validation failed', 'field_errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
         serializer.save()
         return Response(serializer.data)
 

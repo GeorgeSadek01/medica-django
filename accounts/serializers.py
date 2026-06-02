@@ -16,6 +16,21 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('An account with this email already exists', code='conflict')
         return value
 
+    def validate_first_name(self, value):
+        if len(value) < 2:
+            raise serializers.ValidationError('First name must be at least 2 characters.')
+        return value
+
+    def validate_last_name(self, value):
+        if len(value) < 2:
+            raise serializers.ValidationError('Last name must be at least 2 characters.')
+        return value
+
+    def validate_phone(self, value):
+        if value and (len(value) != 11 or not value.isdigit()):
+            raise serializers.ValidationError('Phone must be 11 digits.')
+        return value
+
     def validate(self, attrs):
         attrs.pop('specialty', None)
         return attrs
