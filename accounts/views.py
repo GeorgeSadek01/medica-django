@@ -6,12 +6,15 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.core.mail import EmailMultiAlternatives
+from django.db import transaction
 from django.db.models import Q, Count
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.conf import settings
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 from doctors.models import DoctorProfile
 from appointments.models import Appointment
 from appointments.serializers import AppointmentSerializer
@@ -252,9 +255,6 @@ def google_login(request):
         return Response({'error': 'Credential is required'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        from google.oauth2 import id_token
-        from google.auth.transport import requests as google_requests
-
         id_info = id_token.verify_oauth2_token(
             credential,
             google_requests.Request(),
@@ -271,25 +271,24 @@ def google_login(request):
     if not email:
         return Response({'error': 'Google account has no email address'}, status=status.HTTP_400_BAD_REQUEST)
 
-    user = None
-    try:
-        user = User.objects.get(google_id=google_id)
-    except User.DoesNotExist:
-        try:
-            user = User.objects.get(email__iexact=email)
-            if not user.google_id:
-                user.google_id = google_id
-                user.email_verified = True
-                user.save(update_fields=['google_id', 'email_verified'])
-        except User.DoesNotExist:
-            user = User.objects.create_user(
-                email=email,
-                first_name=first_name or email.split('@')[0],
-                last_name=last_name or '',
-                role='patient',
-                google_id=google_id,
-                email_verified=True,
-            )
+    with transaction.atomic():
+        user = User.objects.select_for_update().filter(google_id=google_id).first()
+        if not user:
+            user = User.objects.select_for_update().filter(email__iexact=email).first()
+            if user:
+                if not user.google_id:
+                    user.google_id = google_id
+                    user.email_verified = True
+                    user.save(update_fields=['google_id', 'email_verified'])
+            else:
+                user = User.objects.create_user(
+                    email=email,
+                    first_name=first_name or email.split('@')[0],
+                    last_name=last_name or '',
+                    role='patient',
+                    google_id=google_id,
+                    email_verified=True,
+                )
 
     if not user.is_active:
         return Response({'error': 'Account is disabled'}, status=status.HTTP_403_FORBIDDEN)
