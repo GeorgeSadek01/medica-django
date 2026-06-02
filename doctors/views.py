@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.utils import timezone as djangotime
+from django.utils import timezone
 from django.db.models import Count, Q
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -237,7 +237,7 @@ def upload_documents(request):
         existing.medical_certificate = certificate
         existing.status = 'pending'
         existing.rejection_reason = ''
-        existing.uploaded_at = djangotime.now()
+        existing.uploaded_at = timezone.now()
         existing.save()
         doc = existing
     else:
@@ -283,7 +283,6 @@ def document_list(request):
             'status': d.status,
             'rejection_reason': d.rejection_reason,
             'uploaded_at': d.uploaded_at.isoformat(),
-            'updated_at': d.updated_at.isoformat() if d.updated_at else None,
         })
 
     return Response(data)
