@@ -1,3 +1,8 @@
 from django.contrib import admin
+from .models import Specialty
 
-# Register your models here.
+
+@admin.register(Specialty)
+class SpecialtyAdmin(admin.ModelAdmin):
+    list_display = ['id', 'name']
+    search_fields = ['name']

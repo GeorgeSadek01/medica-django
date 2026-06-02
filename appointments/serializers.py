@@ -3,15 +3,16 @@ from .models import Appointment
 from doctors.models import AvailabilityBlock
 import datetime
 
+
 class AppointmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Appointment
         fields = [
-            'id', 'doctor', 'doctor_name', 'specialty', 'patient', 
-            'patient_name', 'date', 'time_slot', 'time', 
+            'id', 'doctor', 'doctor_name', 'specialty', 'patient',
+            'patient_name', 'date', 'time_slot', 'time',
             'status', 'notes', 'doctor_notes', 'paid', 'created_at'
         ]
-        read_only_fields = ['patient', 'doctor_name', 'specialty', 'patient_name', 'status']
+        read_only_fields = ['id', 'patient', 'doctor_name', 'specialty', 'patient_name', 'status']
 
     def validate(self, data):
         doctor = data['doctor']
@@ -31,7 +32,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 f"Doctor does not available at this time on ({day_name})"
             )
-        
+
         is_booked = Appointment.objects.filter(
             doctor=doctor,
             date=date,
@@ -43,5 +44,5 @@ class AppointmentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "This date is already booked by another patient plz select another"
             )
-            
+
         return data
