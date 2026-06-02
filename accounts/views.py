@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -13,6 +15,8 @@ from django.utils.html import strip_tags
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from doctors.models import DoctorProfile
@@ -29,6 +33,7 @@ def send_verification_email(user):
     uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
     token = token_generator.make_token(user)
     verification_url = f"{settings.FRONTEND_URL}/verify-email?uidb64={uidb64}&token={token}"
+    logger.info("Verification URL for %s: %s", user.email, verification_url)
     subject = 'Verify your Medica email address'
     html = render_to_string('accounts/email_verification_email.html', {
         'user': user,
@@ -86,10 +91,15 @@ def register(request):
         user.verified = False
         user.save(update_fields=['verified'])
 
-    try:
-        send_verification_email(user)
-    except Exception:
-        pass
+    if settings.EMAIL_HOST:
+        try:
+            send_verification_email(user)
+        except Exception:
+            logger.exception("Failed to send verification email to %s", user.email)
+    else:
+        user.email_verified = True
+        user.save(update_fields=['email_verified'])
+        logger.info("SMTP not configured — auto-verified user %s", user.email)
 
     refresh = RefreshToken.for_user(user)
     return Response({
@@ -104,6 +114,13 @@ def register(request):
 def token(request):
     email = request.data.get('email', '')
     password = request.data.get('password', '')
+
+    try:
+        user = User.objects.get(email__iexact=email)
+        if user.google_id and not user.has_usable_password():
+            return Response({'error': 'This account uses Google sign in. Please sign in with Google.'}, status=status.HTTP_401_UNAUTHORIZED)
+    except User.DoesNotExist:
+        pass
 
     user = authenticate(request, username=email, password=password)
     if not user or not user.is_active:
@@ -165,6 +182,9 @@ def password_reset(request):
     try:
         user = User.objects.get(email__iexact=email)
     except User.DoesNotExist:
+        return Response({'message': 'If an account with this email exists, a password reset link has been sent.'})
+
+    if user.google_id and not user.has_usable_password():
         return Response({'message': 'If an account with this email exists, a password reset link has been sent.'})
 
     try:
@@ -274,21 +294,19 @@ def google_login(request):
     with transaction.atomic():
         user = User.objects.select_for_update().filter(google_id=google_id).first()
         if not user:
-            user = User.objects.select_for_update().filter(email__iexact=email).first()
-            if user:
-                if not user.google_id:
-                    user.google_id = google_id
-                    user.email_verified = True
-                    user.save(update_fields=['google_id', 'email_verified'])
-            else:
-                user = User.objects.create_user(
-                    email=email,
-                    first_name=first_name or email.split('@')[0],
-                    last_name=last_name or '',
-                    role='patient',
-                    google_id=google_id,
-                    email_verified=True,
-                )
+            existing = User.objects.select_for_update().filter(email__iexact=email).first()
+            if existing:
+                if existing.google_id:
+                    return Response({'error': 'An account with this Google account already exists'}, status=status.HTTP_409_CONFLICT)
+                return Response({'error': 'An account with this email already exists. Please sign in with your email and password.'}, status=status.HTTP_409_CONFLICT)
+            user = User.objects.create_user(
+                email=email,
+                first_name=first_name or email.split('@')[0],
+                last_name=last_name or '',
+                role='patient',
+                google_id=google_id,
+                email_verified=True,
+            )
 
     if not user.is_active:
         return Response({'error': 'Account is disabled'}, status=status.HTTP_403_FORBIDDEN)
