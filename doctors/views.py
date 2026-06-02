@@ -85,7 +85,11 @@ class AvailabilityViewSet(viewsets.ModelViewSet):
         return AvailabilityBlock.objects.filter(doctor=self.request.user.doctor_profile)
 
     def perform_create(self, serializer):
-        serializer.save(doctor=self.request.user.doctor_profile)
+        doctor = self.request.user.doctor_profile
+        if doctor.session_price <= 0:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError('Set your session price before adding availability schedules.')
+        serializer.save(doctor=doctor)
 
 
 # ===== Public doctor endpoints =====
@@ -99,7 +103,14 @@ class DoctorPagination(PageNumberPagination):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def doctor_list(request):
-    queryset = DoctorProfile.objects.select_related('user').filter(user__is_active=True, user__verified=True)
+    from django.db.models import Exists, OuterRef
+    has_availability = AvailabilityBlock.objects.filter(doctor=OuterRef('pk'))
+    queryset = DoctorProfile.objects.select_related('user').filter(
+        user__is_active=True,
+        user__verified=True,
+        session_price__gt=0,
+        Exists(has_availability)
+    )
     specialty = request.query_params.get('specialty')
     name = request.query_params.get('name')
     search = request.query_params.get('search')
@@ -126,7 +137,14 @@ def doctor_list(request):
 def doctor_detail(request, pk):
     if request.method == 'GET':
         try:
-            doctor = DoctorProfile.objects.select_related('user').get(pk=pk, user__is_active=True, user__verified=True)
+            doctor = DoctorProfile.objects.select_related('user').get(
+                pk=pk,
+                user__is_active=True,
+                user__verified=True,
+                session_price__gt=0,
+            )
+            if not doctor.availability.exists():
+                raise DoctorProfile.DoesNotExist
         except DoctorProfile.DoesNotExist:
             return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -184,6 +202,8 @@ def doctor_availability(request, pk, slot_id=None):
 
     # POST — create
     if request.method == 'POST':
+        if doctor.session_price <= 0:
+            return Response({'error': 'Set your session price before adding availability schedules.'}, status=status.HTTP_400_BAD_REQUEST)
         serializer = AvailabilityBlockSerializer(data=request.data)
         if not serializer.is_valid():
             return Response({'error': 'Validation failed', 'field_errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
