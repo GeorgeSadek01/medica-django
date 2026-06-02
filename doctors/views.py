@@ -150,3 +150,64 @@ def doctor_availability(request, pk):
     blocks = doctor.availability.all()
     serializer = AvailabilityBlockSerializer(blocks, many=True)
     return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_availability(request, pk):
+    try:
+        doctor = DoctorProfile.objects.get(pk=pk, user__is_active=True)
+    except DoctorProfile.DoesNotExist:
+        return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.user.role != 'admin' and request.user.doctor_profile != doctor:
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    serializer = AvailabilityBlockSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer.save(doctor=doctor)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def update_availability(request, pk, slot_id):
+    try:
+        doctor = DoctorProfile.objects.get(pk=pk, user__is_active=True)
+    except DoctorProfile.DoesNotExist:
+        return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.user.role != 'admin' and request.user.doctor_profile != doctor:
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        slot = doctor.availability.get(pk=slot_id)
+    except AvailabilityBlock.DoesNotExist:
+        return Response({'error': 'Availability slot not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = AvailabilityBlockSerializer(slot, data=request.data, partial=request.method == 'PATCH')
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer.save()
+    return Response(serializer.data)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_availability(request, pk, slot_id):
+    try:
+        doctor = DoctorProfile.objects.get(pk=pk, user__is_active=True)
+    except DoctorProfile.DoesNotExist:
+        return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.user.role != 'admin' and request.user.doctor_profile != doctor:
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        slot = doctor.availability.get(pk=slot_id)
+    except AvailabilityBlock.DoesNotExist:
+        return Response({'error': 'Availability slot not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    slot.delete()
+    return Response({'deleted': True, 'id': slot_id})

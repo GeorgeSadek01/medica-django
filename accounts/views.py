@@ -25,7 +25,7 @@ def register(request):
             field_errors[field] = errors[0] if isinstance(errors, list) else str(errors)
         if 'non_field_errors' in field_errors:
             return Response({'error': field_errors.pop('non_field_errors')}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(field_errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Validation failed', 'field_errors': field_errors}, status=status.HTTP_400_BAD_REQUEST)
 
     user = serializer.save()
 
@@ -41,7 +41,12 @@ def register(request):
         user.verified = False
         user.save(update_fields=['verified'])
 
-    return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+    refresh = RefreshToken.for_user(user)
+    return Response({
+        'user': UserSerializer(user).data,
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+    }, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST'])
