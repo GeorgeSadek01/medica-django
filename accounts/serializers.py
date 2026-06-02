@@ -24,13 +24,15 @@ class RegisterSerializer(serializers.ModelSerializer):
         user = User.objects.create_user(**validated_data)
         return user
 
-
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'email', 'first_name', 'last_name', 'role', 'phone', 'avatar', 'verified', 'is_active']
-        read_only_fields = ['id', 'role', 'is_active', 'verified']
-
+        fields = [
+            'id', 'email', 'first_name', 'last_name',
+            'role', 'phone', 'avatar', 'is_active',
+            'verified', 'deleted_at',  # ← لازم يكون موجود
+        ]
+        read_only_fields = ['id', 'deleted_at']
 
 class AdminUserUpdateSerializer(serializers.ModelSerializer):
     class Meta:

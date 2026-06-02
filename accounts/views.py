@@ -101,7 +101,6 @@ def me(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def user_list(request):
-    # Admin فقط
     if request.user.role != 'admin':
         return Response(
             {'error': 'Permission denied.'},
@@ -110,7 +109,6 @@ def user_list(request):
 
     users = User.objects.all()
 
-    # Filters
     search = request.query_params.get('search')
     role = request.query_params.get('role')
     is_active = request.query_params.get('is_active')
@@ -124,8 +122,12 @@ def user_list(request):
         )
     if role:
         users = users.filter(role=role)
+
     if is_active is not None:
         users = users.filter(is_active=is_active.lower() == 'true')
+    else:
+        users = users.filter(is_active=True)
+
     if verified is not None:
         users = users.filter(verified=verified.lower() == 'true')
 
@@ -144,7 +146,6 @@ def user_detail(request, pk):
             status=status.HTTP_404_NOT_FOUND
         )
 
-    # GET — Admin فقط
     if request.method == 'GET':
         if request.user.role != 'admin':
             return Response(
@@ -153,7 +154,6 @@ def user_detail(request, pk):
             )
         return Response(UserSerializer(user).data)
 
-    # PATCH — Admin أو نفس الـ user
     if request.method == 'PATCH':
         if request.user.role != 'admin' and request.user.id != user.id:
             return Response(
@@ -171,7 +171,6 @@ def user_detail(request, pk):
             return Response(UserSerializer(user).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    # DELETE — Soft delete, Admin فقط
     if request.method == 'DELETE':
         if request.user.role != 'admin':
             return Response(
@@ -184,3 +183,25 @@ def user_detail(request, pk):
             'is_active': user.is_active,
             'deleted_at': user.deleted_at,
         })
+
+
+# ✅ Restore user
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def user_restore(request, pk):
+    if request.user.role != 'admin':
+        return Response(
+            {'error': 'Permission denied.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    try:
+        user = User.objects.get(pk=pk)
+    except User.DoesNotExist:
+        return Response(
+            {'error': 'User not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    user.is_active = True
+    user.deleted_at = None
+    user.save()
+    return Response(UserSerializer(user).data)
