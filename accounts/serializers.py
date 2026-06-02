@@ -45,7 +45,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'first_name', 'last_name',
             'role', 'phone', 'avatar', 'is_active',
-            'verified', 'deleted_at',  # ← لازم يكون موجود
+            'verified', 'email_verified', 'deleted_at',
         ]
         read_only_fields = ['id', 'deleted_at']
 

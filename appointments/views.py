@@ -10,16 +10,12 @@ from django.conf import settings
 from django.http import HttpResponse
 
 from .models import Appointment
-from .serializers import AppointmentSerializer, AppointmentCreateSerializer, AppointmentUpdateSerializer
+from .serializers import (
+    AppointmentSerializer, AppointmentCreateSerializer, AppointmentUpdateSerializer,
+    ALLOWED_TRANSITIONS,
+)
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
-
-ALLOWED_TRANSITIONS = {
-    Appointment.Status.PENDING: [Appointment.Status.CONFIRMED, Appointment.Status.CANCELLED],
-    Appointment.Status.CONFIRMED: [Appointment.Status.CANCELLED, Appointment.Status.COMPLETED],
-    Appointment.Status.CANCELLED: [],
-    Appointment.Status.COMPLETED: [],
-}
 
 
 def validate_transition(appointment, new_status):
@@ -27,6 +23,25 @@ def validate_transition(appointment, new_status):
         allowed = ALLOWED_TRANSITIONS.get(appointment.status, [])
         if new_status not in allowed:
             return False, f"Cannot transition from '{appointment.status}' to '{new_status}'."
+    return True, None
+
+
+def can_user_set_status(user, appointment, new_status):
+    if user.role == 'admin':
+        return True, None
+    if new_status == Appointment.Status.CANCELLED:
+        if appointment.patient == user:
+            allowed = ALLOWED_TRANSITIONS.get(appointment.status, [])
+            if Appointment.Status.CANCELLED in allowed:
+                return True, None
+            return False, "You can no longer cancel this appointment."
+        if user.role == 'doctor':
+            return True, None
+        return False, "Not authorized to cancel this appointment."
+    if new_status in [Appointment.Status.CONFIRMED, Appointment.Status.COMPLETED]:
+        if user.role == 'doctor':
+            return True, None
+        return False, "Only doctors can confirm or complete appointments."
     return True, None
 
 
@@ -65,16 +80,19 @@ class DoctorAppointmentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='add-notes')
     def add_doctor_notes(self, request, pk=None):
         appointment = self.get_object()
-        ok, err = validate_transition(appointment, Appointment.Status.COMPLETED)
-        if not ok:
-            return Response({'error': err}, status=status.HTTP_400_BAD_REQUEST)
         notes = request.data.get('doctor_notes', '')
         appointment.doctor_notes = notes
-        appointment.status = Appointment.Status.COMPLETED
+        if appointment.status == Appointment.Status.CONFIRMED:
+            ok, err = validate_transition(appointment, Appointment.Status.COMPLETED)
+            if ok:
+                appointment.status = Appointment.Status.COMPLETED
         appointment.save()
         serializer = self.get_serializer(appointment)
+        msg = "Doctor notes saved."
+        if appointment.status == Appointment.Status.COMPLETED:
+            msg = "Doctor notes saved and appointment marked as completed."
         return Response({
-            "message": "Doctor notes added and appointment marked as completed",
+            "message": msg,
             "appointment": serializer.data
         })
 
@@ -164,6 +182,8 @@ def appointment_list_create(request):
             return Response({'error': 'Validation failed', 'field_errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
         doctor = serializer.validated_data['doctor']
+        if not doctor.user.verified:
+            return Response({'error': 'This doctor is not yet verified and cannot accept appointments'}, status=status.HTTP_403_FORBIDDEN)
         date = serializer.validated_data['date']
         time_slot = serializer.validated_data['time_slot']
 
@@ -260,8 +280,9 @@ def appointment_detail_view(request, pk):
             ok, err = validate_transition(appointment, status_value)
             if not ok:
                 return Response({'error': err}, status=status.HTTP_400_BAD_REQUEST)
-            if status_value == 'confirmed':
-                serializer.validated_data['paid'] = True
+            ok, err = can_user_set_status(user, appointment, status_value)
+            if not ok:
+                return Response({'error': err}, status=status.HTTP_403_FORBIDDEN)
 
         if 'date' in serializer.validated_data or 'time_slot' in serializer.validated_data:
             doctor = appointment.doctor

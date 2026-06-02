@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+</head>
+<body style="font-family: Arial, sans-serif; padding: 20px;">
+    <h2>Verify Your Email Address</h2>
+    <p>Hi {{ user.first_name }},</p>
+    <p>Thank you for creating a Medica account. Please verify your email address by clicking the link below:</p>
+    <p>
+        <a href="{{ verification_url }}" style="display: inline-block; padding: 12px 24px; background-color: #1976d2; color: white; text-decoration: none; border-radius: 4px;">
+            Verify Email
+        </a>
+    </p>
+    <p>Or copy and paste this link in your browser:</p>
+    <p>{{ verification_url }}</p>
+    <p>This link expires in 24 hours.</p>
+    <p>If you did not create an account, please ignore this email.</p>
+    <br>
+    <p>— Medica Team</p>
+</body>
+</html>

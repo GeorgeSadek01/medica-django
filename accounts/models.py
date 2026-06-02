@@ -34,6 +34,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     avatar = models.TextField(default='', blank=True)
     is_active = models.BooleanField(default=True)
     verified = models.BooleanField(null=True, blank=True)
+    email_verified = models.BooleanField(default=False)
+    google_id = models.CharField(max_length=255, null=True, blank=True, unique=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)

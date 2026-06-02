@@ -3,17 +3,30 @@ from .models import Appointment
 from doctors.models import AvailabilityBlock
 
 
+ALLOWED_TRANSITIONS = {
+    Appointment.Status.PENDING: [Appointment.Status.CONFIRMED, Appointment.Status.CANCELLED],
+    Appointment.Status.CONFIRMED: [Appointment.Status.CANCELLED, Appointment.Status.COMPLETED],
+    Appointment.Status.CANCELLED: [],
+    Appointment.Status.COMPLETED: [],
+}
+
+
 class AppointmentSerializer(serializers.ModelSerializer):
     time = serializers.TimeField(format='%H:%M')
+    allowed_next_statuses = serializers.SerializerMethodField()
 
     class Meta:
         model = Appointment
         fields = [
             'id', 'doctor', 'doctor_name', 'specialty', 'patient',
             'patient_name', 'date', 'time_slot', 'time',
-            'status', 'notes', 'doctor_notes', 'paid', 'created_at'
+            'status', 'notes', 'doctor_notes', 'paid', 'created_at',
+            'allowed_next_statuses',
         ]
-        read_only_fields = ['id', 'patient', 'doctor_name', 'specialty', 'patient_name', 'status']
+        read_only_fields = ['id', 'patient', 'doctor_name', 'specialty', 'patient_name', 'status', 'allowed_next_statuses']
+
+    def get_allowed_next_statuses(self, obj):
+        return ALLOWED_TRANSITIONS.get(obj.status, [])
 
     def validate_date(self, value):
         from datetime import date

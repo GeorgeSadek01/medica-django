@@ -4,10 +4,52 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from django.db.models import Q
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.core.mail import EmailMultiAlternatives
+from django.db.models import Q, Count
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.conf import settings
 from doctors.models import DoctorProfile
+from appointments.models import Appointment
+from appointments.serializers import AppointmentSerializer
+from specialties.models import Specialty
 from .serializers import RegisterSerializer, UserSerializer, AdminUserUpdateSerializer
 from .models import User
+
+token_generator = PasswordResetTokenGenerator()
+
+
+def send_verification_email(user):
+    uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+    token = token_generator.make_token(user)
+    verification_url = f"{settings.FRONTEND_URL}/verify-email?uidb64={uidb64}&token={token}"
+    subject = 'Verify your Medica email address'
+    html = render_to_string('accounts/email_verification_email.html', {
+        'user': user,
+        'verification_url': verification_url,
+    })
+    text = strip_tags(html)
+    msg = EmailMultiAlternatives(subject, text, settings.DEFAULT_FROM_EMAIL, [user.email])
+    msg.attach_alternative(html, 'text/html')
+    msg.send()
+
+
+def send_password_reset_email(user):
+    uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+    token = token_generator.make_token(user)
+    reset_url = f"{settings.FRONTEND_URL}/reset-password?uidb64={uidb64}&token={token}"
+    subject = 'Reset your Medica password'
+    html = render_to_string('accounts/password_reset_email.html', {
+        'user': user,
+        'reset_url': reset_url,
+    })
+    text = strip_tags(html)
+    msg = EmailMultiAlternatives(subject, text, settings.DEFAULT_FROM_EMAIL, [user.email])
+    msg.attach_alternative(html, 'text/html')
+    msg.send()
 
 
 @api_view(['POST'])
@@ -41,7 +83,17 @@ def register(request):
         user.verified = False
         user.save(update_fields=['verified'])
 
-    return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+    try:
+        send_verification_email(user)
+    except Exception:
+        pass
+
+    refresh = RefreshToken.for_user(user)
+    return Response({
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+        'user': UserSerializer(user).data,
+    }, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST'])
@@ -53,6 +105,9 @@ def token(request):
     user = authenticate(request, username=email, password=password)
     if not user or not user.is_active:
         return Response({'error': 'Invalid email or password'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    if not user.email_verified:
+        return Response({'error': 'Please verify your email address before logging in'}, status=status.HTTP_403_FORBIDDEN)
 
     refresh = RefreshToken.for_user(user)
     return Response({
@@ -92,7 +147,159 @@ def logout(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def me(request):
+    if not request.user.email_verified:
+        return Response({'error': 'Email not verified'}, status=status.HTTP_403_FORBIDDEN)
     return Response(UserSerializer(request.user).data)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset(request):
+    email = request.data.get('email', '')
+    if not email:
+        return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        user = User.objects.get(email__iexact=email)
+    except User.DoesNotExist:
+        return Response({'message': 'If an account with this email exists, a password reset link has been sent.'})
+
+    try:
+        send_password_reset_email(user)
+    except Exception:
+        return Response({'error': 'Failed to send reset email. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return Response({'message': 'If an account with this email exists, a password reset link has been sent.'})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset_confirm(request):
+    uidb64 = request.data.get('uidb64', '')
+    token = request.data.get('token', '')
+    password = request.data.get('password', '')
+
+    if not uidb64 or not token or not password:
+        return Response({'error': 'uidb64, token, and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        uid = force_str(urlsafe_base64_decode(uidb64))
+        user = User.objects.get(pk=uid)
+    except (User.DoesNotExist, ValueError, TypeError, OverflowError):
+        return Response({'error': 'Invalid reset link'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not token_generator.check_token(user, token):
+        return Response({'error': 'Invalid or expired reset link'}, status=status.HTTP_400_BAD_REQUEST)
+
+    from django.contrib.auth.password_validation import validate_password
+    from django.core.exceptions import ValidationError
+    try:
+        validate_password(password)
+    except ValidationError as e:
+        return Response({'error': ' '.join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.set_password(password)
+    user.save()
+    return Response({'message': 'Password has been reset successfully'})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_email(request):
+    uidb64 = request.data.get('uidb64', '')
+    token = request.data.get('token', '')
+
+    if not uidb64 or not token:
+        return Response({'error': 'uidb64 and token are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        uid = force_str(urlsafe_base64_decode(uidb64))
+        user = User.objects.get(pk=uid)
+    except (User.DoesNotExist, ValueError, TypeError, OverflowError):
+        return Response({'error': 'Invalid verification link'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if user.email_verified:
+        return Response({'message': 'Email already verified'})
+
+    if not token_generator.check_token(user, token):
+        return Response({'error': 'Invalid or expired verification link'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.email_verified = True
+    user.save(update_fields=['email_verified'])
+    return Response({'message': 'Email verified successfully'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resend_verification(request):
+    user = request.user
+    if user.email_verified:
+        return Response({'message': 'Email already verified'})
+
+    try:
+        send_verification_email(user)
+    except Exception:
+        return Response({'error': 'Failed to send verification email. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return Response({'message': 'Verification email sent'})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def google_login(request):
+    credential = request.data.get('credential', '')
+    if not credential:
+        return Response({'error': 'Credential is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        from google.oauth2 import id_token
+        from google.auth.transport import requests as google_requests
+
+        id_info = id_token.verify_oauth2_token(
+            credential,
+            google_requests.Request(),
+            settings.GOOGLE_CLIENT_ID,
+        )
+    except ValueError:
+        return Response({'error': 'Invalid Google credential'}, status=status.HTTP_400_BAD_REQUEST)
+
+    google_id = id_info.get('sub', '')
+    email = id_info.get('email', '')
+    first_name = id_info.get('given_name', '')
+    last_name = id_info.get('family_name', '')
+
+    if not email:
+        return Response({'error': 'Google account has no email address'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = None
+    try:
+        user = User.objects.get(google_id=google_id)
+    except User.DoesNotExist:
+        try:
+            user = User.objects.get(email__iexact=email)
+            if not user.google_id:
+                user.google_id = google_id
+                user.email_verified = True
+                user.save(update_fields=['google_id', 'email_verified'])
+        except User.DoesNotExist:
+            user = User.objects.create_user(
+                email=email,
+                first_name=first_name or email.split('@')[0],
+                last_name=last_name or '',
+                role='patient',
+                google_id=google_id,
+                email_verified=True,
+            )
+
+    if not user.is_active:
+        return Response({'error': 'Account is disabled'}, status=status.HTTP_403_FORBIDDEN)
+
+    refresh = RefreshToken.for_user(user)
+    return Response({
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+        'user': UserSerializer(user).data,
+    })
 
 
 # ===== Admin User Management =====
@@ -211,3 +418,41 @@ def user_restore(request, pk):
     user.deleted_at = None
     user.save()
     return Response(UserSerializer(user).data)
+
+
+# ===== Admin Dashboard =====
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_dashboard(request):
+    if request.user.role != 'admin':
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    total_patients = User.objects.filter(role='patient').count()
+    total_doctors = User.objects.filter(role='doctor').count()
+    unverified_doctors = User.objects.filter(role='doctor', verified=False).count()
+
+    appt_counts = Appointment.objects.aggregate(
+        total=Count('id'),
+        pending=Count('id', filter=Q(status=Appointment.Status.PENDING)),
+        confirmed=Count('id', filter=Q(status=Appointment.Status.CONFIRMED)),
+        completed=Count('id', filter=Q(status=Appointment.Status.COMPLETED)),
+        cancelled=Count('id', filter=Q(status=Appointment.Status.CANCELLED)),
+    )
+
+    total_specialties = Specialty.objects.count()
+
+    recent_appointments = Appointment.objects.order_by('-created_at')[:10]
+    recent_data = AppointmentSerializer(recent_appointments, many=True).data
+
+    return Response({
+        'users': {
+            'total': total_patients + total_doctors,
+            'patients': total_patients,
+            'doctors': total_doctors,
+            'unverified_doctors': unverified_doctors,
+        },
+        'appointments': appt_counts,
+        'specialties': total_specialties,
+        'recent_appointments': recent_data,
+    })

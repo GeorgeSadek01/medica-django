@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import DoctorProfile, AvailabilityBlock
+from .models import DoctorProfile, AvailabilityBlock, DoctorDocument
 
 
 @admin.register(DoctorProfile)
@@ -13,3 +13,9 @@ class DoctorProfileAdmin(admin.ModelAdmin):
 class AvailabilityBlockAdmin(admin.ModelAdmin):
     list_display = ['doctor', 'day', 'start_time', 'end_time']
     list_filter = ['day']
+
+
+@admin.register(DoctorDocument)
+class DoctorDocumentAdmin(admin.ModelAdmin):
+    list_display = ['doctor', 'status', 'uploaded_at']
+    list_filter = ['status']

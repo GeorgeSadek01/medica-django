@@ -9,7 +9,7 @@ from rest_framework.permissions import BasePermission
 from appointments.models import Appointment
 from appointments.serializers import AppointmentSerializer
 
-from .models import DoctorProfile, AvailabilityBlock
+from .models import DoctorProfile, AvailabilityBlock, DoctorDocument
 from .serializers import DoctorProfileSerializer, AvailabilityBlockSerializer
 
 
@@ -100,7 +100,7 @@ class DoctorPagination(PageNumberPagination):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def doctor_list(request):
-    queryset = DoctorProfile.objects.select_related('user').filter(user__is_active=True)
+    queryset = DoctorProfile.objects.select_related('user').filter(user__is_active=True, user__verified=True)
     specialty = request.query_params.get('specialty')
     name = request.query_params.get('name')
     search = request.query_params.get('search')
@@ -125,12 +125,12 @@ def doctor_list(request):
 @api_view(['GET', 'PATCH'])
 @permission_classes([AllowAny])
 def doctor_detail(request, pk):
-    try:
-        doctor = DoctorProfile.objects.select_related('user').get(pk=pk, user__is_active=True)
-    except DoctorProfile.DoesNotExist:
-        return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
-
     if request.method == 'GET':
+        try:
+            doctor = DoctorProfile.objects.select_related('user').get(pk=pk, user__is_active=True, user__verified=True)
+        except DoctorProfile.DoesNotExist:
+            return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
+
         serializer = DoctorProfileSerializer(doctor)
         return Response(serializer.data)
 
@@ -138,6 +138,12 @@ def doctor_detail(request, pk):
         user = request.user
         if not user.is_authenticated:
             return Response({'error': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            doctor = DoctorProfile.objects.select_related('user').get(pk=pk, user__is_active=True)
+        except DoctorProfile.DoesNotExist:
+            return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
+
         is_doctor_owner = hasattr(user, 'doctor_profile') and user.doctor_profile.pk == doctor.pk
         if user.role != 'admin' and not is_doctor_owner:
             return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
@@ -151,20 +157,25 @@ def doctor_detail(request, pk):
 
 @api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 def doctor_availability(request, pk, slot_id=None):
-    try:
-        doctor = DoctorProfile.objects.get(pk=pk, user__is_active=True)
-    except DoctorProfile.DoesNotExist:
-        return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    # GET — public
+    # GET — public, only verified doctors
     if request.method == 'GET':
+        try:
+            doctor = DoctorProfile.objects.get(pk=pk, user__is_active=True, user__verified=True)
+        except DoctorProfile.DoesNotExist:
+            return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
+
         blocks = doctor.availability.all()
         if slot_id is not None:
             blocks = blocks.filter(pk=slot_id)
         serializer = AvailabilityBlockSerializer(blocks, many=True)
         return Response(serializer.data)
 
-    # Mutations require auth
+    # Mutations require auth — allow unverified doctors to manage own slots
+    try:
+        doctor = DoctorProfile.objects.get(pk=pk, user__is_active=True)
+    except DoctorProfile.DoesNotExist:
+        return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
+
     user = request.user
     if not user.is_authenticated:
         return Response({'error': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -200,3 +211,109 @@ def doctor_availability(request, pk, slot_id=None):
         return Response({'deleted': True, 'id': slot_id})
 
     return Response({'error': 'Method not allowed.'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+# ====== Doctor Document Upload & Admin Review ======
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_documents(request):
+    if not hasattr(request.user, 'doctor_profile'):
+        return Response({'error': 'Only doctors can upload documents.'}, status=status.HTTP_403_FORBIDDEN)
+
+    doctor = request.user.doctor_profile
+
+    identity = request.FILES.get('identity_document')
+    certificate = request.FILES.get('medical_certificate')
+
+    if not identity or not certificate:
+        return Response({'error': 'Both identity_document and medical_certificate are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    existing = DoctorDocument.objects.filter(doctor=doctor).first()
+    if existing:
+        if existing.status != 'rejected':
+            return Response({'error': 'Documents already uploaded and pending review.'}, status=status.HTTP_400_BAD_REQUEST)
+        existing.identity_document = identity
+        existing.medical_certificate = certificate
+        existing.status = 'pending'
+        existing.rejection_reason = ''
+        existing.save()
+        doc = existing
+    else:
+        doc = DoctorDocument.objects.create(
+            doctor=doctor,
+            identity_document=identity,
+            medical_certificate=certificate,
+        )
+
+    return Response({
+        'id': doc.id,
+        'status': doc.status,
+        'identity_document': doc.identity_document.url if doc.identity_document else None,
+        'medical_certificate': doc.medical_certificate.url if doc.medical_certificate else None,
+        'uploaded_at': doc.uploaded_at.isoformat(),
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def document_list(request):
+    user = request.user
+    if user.role == 'admin':
+        status_filter = request.query_params.get('status')
+        docs = DoctorDocument.objects.select_related('doctor__user').all()
+        if status_filter:
+            docs = docs.filter(status=status_filter)
+    elif user.role == 'doctor' and hasattr(user, 'doctor_profile'):
+        docs = DoctorDocument.objects.filter(doctor=user.doctor_profile)
+    else:
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    data = []
+    for d in docs:
+        data.append({
+            'id': d.id,
+            'doctor_id': d.doctor.user_id,
+            'doctor_name': f'{d.doctor.first_name} {d.doctor.last_name}',
+            'doctor_email': d.doctor.user.email,
+            'specialty': d.doctor.specialty,
+            'identity_document': d.identity_document.url if d.identity_document else None,
+            'medical_certificate': d.medical_certificate.url if d.medical_certificate else None,
+            'status': d.status,
+            'rejection_reason': d.rejection_reason,
+            'uploaded_at': d.uploaded_at.isoformat(),
+        })
+
+    return Response(data)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def review_document(request, pk):
+    if request.user.role != 'admin':
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        doc = DoctorDocument.objects.select_related('doctor').get(pk=pk)
+    except DoctorDocument.DoesNotExist:
+        return Response({'error': 'Document not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    new_status = request.data.get('status')
+    if new_status not in ('approved', 'rejected'):
+        return Response({'error': 'Status must be "approved" or "rejected".'}, status=status.HTTP_400_BAD_REQUEST)
+
+    doc.status = new_status
+    doc.rejection_reason = request.data.get('rejection_reason', '')
+    doc.save()
+
+    if new_status == 'approved':
+        user = doc.doctor.user
+        user.verified = True
+        user.save(update_fields=['verified'])
+
+    return Response({
+        'id': doc.id,
+        'status': doc.status,
+        'rejection_reason': doc.rejection_reason,
+    })

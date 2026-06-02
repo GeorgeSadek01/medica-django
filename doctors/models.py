@@ -20,6 +20,31 @@ class DoctorProfile(models.Model):
         return f'{self.first_name} {self.last_name}'
 
 
+class DoctorDocument(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending'
+        APPROVED = 'approved'
+        REJECTED = 'rejected'
+
+    doctor = models.OneToOneField(
+        DoctorProfile,
+        on_delete=models.CASCADE,
+        related_name='documents',
+    )
+    identity_document = models.FileField(upload_to='doctor_documents/')
+    medical_certificate = models.FileField(upload_to='doctor_documents/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    rejection_reason = models.TextField(default='', blank=True)
+
+    def __str__(self):
+        return f'Documents for {self.doctor.first_name} {self.doctor.last_name} ({self.status})'
+
+
 class AvailabilityBlock(models.Model):
     DAYS_OF_WEEK = [
         ('Monday', 'Monday'),
