@@ -2,23 +2,33 @@ from rest_framework import serializers
 from .models import DoctorProfile, AvailabilityBlock
 
 
-class DoctorProfileSerializer(serializers.ModelSerializer):
-    email = serializers.EmailField(source='user.email', read_only=True)
-    username = serializers.CharField(source='user.username', read_only=True)
-
-    class Meta:
-        model = DoctorProfile
-        fields = ['user', 'username', 'email', 'first_name', 'last_name', 'specialty', 'bio', 'contact', 'session_price']
-        read_only_fields = ['user']
-
 class AvailabilityBlockSerializer(serializers.ModelSerializer):
     class Meta:
         model = AvailabilityBlock
-        fields = ['id', 'doctor', 'day', 'start_time', 'end_time']
-        read_only_fields = ['doctor']
-    
-    def validate(self, data):
-        if data['start_time'] >= data['end_time']:
-            raise serializers.ValidationError("Start time must be before end time.")
-        return data
+        fields = ['id', 'day', 'start_time', 'end_time']
 
+    def validate(self, attrs):
+        start = attrs.get('start_time')
+        end = attrs.get('end_time')
+        if start and end and start >= end:
+            raise serializers.ValidationError('end_time must be after start_time')
+        return attrs
+
+
+class DoctorProfileSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(source='user_id', read_only=True)
+    availability = AvailabilityBlockSerializer(many=True, read_only=True)
+    bookedSlots = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DoctorProfile
+        fields = ['id', 'first_name', 'last_name', 'specialty', 'bio', 'contact', 'session_price', 'availability', 'bookedSlots']
+
+    def get_bookedSlots(self, obj):
+        from appointments.models import Appointment
+        slots = {}
+        for apt in obj.appointments.exclude(status='cancelled').values('date', 'time'):
+            date_str = apt['date'].strftime('%Y-%m-%d')
+            time_str = apt['time'].strftime('%H:%M')
+            slots.setdefault(date_str, []).append(time_str)
+        return slots

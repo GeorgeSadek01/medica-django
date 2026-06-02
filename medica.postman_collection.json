@@ -1,0 +1,506 @@
+{
+  "info": {
+    "_postman_id": "c5865a1c-d6e5-4d4d-8dc0-2ac3202ed06c",
+    "name": "medica",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "48610634",
+    "_collection_link": "https://go.postman.co/collection/48610634-c5865a1c-d6e5-4d4d-8dc0-2ac3202ed06c?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "register",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"username\": \"sohyla_dev\",\n    \"email\": \"doctor@medica.com\",\n    \"password\": \"SecurePassword123\",\n    \"first_name\": \"Sohyla\",\n    \"last_name\": \"Ahmed\",\n    \"role\": \"doctor\" \n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/register/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "register",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "login",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"email\": \"doctor@medica.com\",\n    \"password\": \"SecurePassword123\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/token/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "token",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "get doctor profile",
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/doctors/profile/me/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "doctors",
+            "profile",
+            "me",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "update doctor profile",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"specialty\": \"Dentist\",\n    \"bio\": \"Expert in cosmetic dentistry with 5 years of experience.\",\n    \"contact\": \"+201000000000\",\n    \"session_price\": 300\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/doctors/profile/me/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "doctors",
+            "profile",
+            "me",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Doctor Dashboard Overview",
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/doctors/profile/dashboard/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "doctors",
+            "profile",
+            "dashboard",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "create slot",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"day\": \"Friday\",\n    \"start_time\": \"10:00:00\",\n    \"end_time\": \"12:00:00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/doctors/availability/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "doctors",
+            "availability",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "get All slots",
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/doctors/availability/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "doctors",
+            "availability",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "edit slot",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"start_time\": \"5:00:00\",\n    \"end_time\": \"7:00:00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/doctors/availability/3/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "doctors",
+            "availability",
+            "3",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "delete slot",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "DELETE",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"start_time\": \"5:00:00\",\n    \"end_time\": \"7:00:00\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/doctors/availability/3/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "doctors",
+            "availability",
+            "3",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "approve appiontment",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/appointments/doctor-appointments/1/approve/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "appointments",
+            "doctor-appointments",
+            "1",
+            "approve",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "add doctor notes",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"doctor_notes\": \"The patient needs to take the prescribed medicine twice a day and review in a week.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/appointments/doctor-appointments/1/add-notes/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "appointments",
+            "doctor-appointments",
+            "1",
+            "add-notes",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "reject appiontment",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{access_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": ""
+        },
+        "url": {
+          "raw": "{{base_url}}/api/appointments/doctor-appointments/2/reject/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "appointments",
+            "doctor-appointments",
+            "2",
+            "reject",
+            ""
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "auth": {
+    "type": "bearer"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": ""
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    }
+  ]
+}

@@ -5,7 +5,6 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.db.models import Q
-from django.utils import timezone
 from doctors.models import DoctorProfile
 from .serializers import RegisterSerializer, UserSerializer, AdminUserUpdateSerializer
 from .models import User
@@ -187,7 +186,7 @@ def user_detail(request, pk):
         })
 
 
-# ✅ Restore user
+# Restore user
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def user_restore(request, pk):
