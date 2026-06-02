@@ -25,8 +25,12 @@ class Command(BaseCommand):
                 'last_name': 'Ali',
                 'role': 'patient',
                 'phone': '01001234567',
+                'email_verified': True,
             },
         )
+        if not patient.email_verified:
+            patient.email_verified = True
+            patient.save(update_fields=['email_verified'])
         patient.set_password(password)
         patient.save()
 
@@ -39,8 +43,12 @@ class Command(BaseCommand):
                 'is_staff': True,
                 'is_superuser': True,
                 'verified': True,
+                'email_verified': True,
             },
         )
+        if not admin_user.email_verified:
+            admin_user.email_verified = True
+            admin_user.save(update_fields=['email_verified'])
         admin_user.set_password(password)
         admin_user.save()
 
@@ -64,8 +72,12 @@ class Command(BaseCommand):
                     'last_name': d['last'],
                     'role': 'doctor',
                     'verified': True,
+                    'email_verified': True,
                 },
             )
+            if not user.email_verified:
+                user.email_verified = True
+                user.save(update_fields=['email_verified'])
             user.set_password(password)
             user.save()
 
