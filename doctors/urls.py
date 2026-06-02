@@ -1,9 +1,9 @@
 from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 from .views import DoctorProfileViewSet, AvailabilityViewSet
 from . import views
 
-router = DefaultRouter()
+router = SimpleRouter()
 router.register(r'profile', DoctorProfileViewSet, basename='doctor-profile')
 router.register(r'availability', AvailabilityViewSet, basename='doctor-availability')
 

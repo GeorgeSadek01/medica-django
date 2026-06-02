@@ -157,19 +157,20 @@ def doctor_availability(request, pk, slot_id=None):
         return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
 
     # GET — public
-    if request.method == 'GET' and slot_id is None:
+    if request.method == 'GET':
         blocks = doctor.availability.all()
+        if slot_id is not None:
+            blocks = blocks.filter(pk=slot_id)
         serializer = AvailabilityBlockSerializer(blocks, many=True)
         return Response(serializer.data)
 
     # Mutations require auth
-    if request.method != 'GET':
-        user = request.user
-        if not user.is_authenticated:
-            return Response({'error': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
-        is_doctor_owner = hasattr(user, 'doctor_profile') and user.doctor_profile.pk == doctor.pk
-        if user.role != 'admin' and not is_doctor_owner:
-            return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    user = request.user
+    if not user.is_authenticated:
+        return Response({'error': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+    is_doctor_owner = hasattr(user, 'doctor_profile') and user.doctor_profile.pk == doctor.pk
+    if user.role != 'admin' and not is_doctor_owner:
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     # POST — create
     if request.method == 'POST':
