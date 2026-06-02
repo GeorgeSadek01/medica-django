@@ -93,4 +93,4 @@ class Command(BaseCommand):
         self.stdout.write(f'  Doctors ({len(created_doctors)}):')
         for d in created_doctors:
             self.stdout.write(f'    ID={d.pk} | {d.first_name} {d.last_name} | {d.specialty} | {d.session_price} EGP')
-        self.stdout.write(f'\n  Use ?page=1&page_size=5 on GET /api/doctors/ to test pagination')
+        self.stdout.write('\n  Use ?page=1&page_size=5 on GET /api/doctors/ to test pagination')

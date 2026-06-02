@@ -42,10 +42,13 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
         time = attrs.get('time')
 
         from doctors.models import AvailabilityBlock
-        if date and doctor:
+        if date and doctor and time:
             day_name = date.strftime('%A')
-            if not AvailabilityBlock.objects.filter(doctor=doctor, day=day_name).exists():
+            blocks = AvailabilityBlock.objects.filter(doctor=doctor, day=day_name)
+            if not blocks.exists():
                 raise serializers.ValidationError('The doctor has no availability on this day')
+            if not blocks.filter(start_time__lte=time, end_time__gte=time).exists():
+                raise serializers.ValidationError('The requested time is outside the doctor\'s available hours')
 
         return attrs
 
@@ -65,7 +68,7 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
 class AppointmentUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Appointment
-        fields = ['status', 'doctor_notes', 'date', 'time_slot', 'time', 'paid']
+        fields = ['status', 'doctor_notes', 'date', 'time_slot', 'time']
 
     def validate_date(self, value):
         from datetime import date

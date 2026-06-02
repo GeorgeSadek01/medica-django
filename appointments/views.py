@@ -1,11 +1,12 @@
+import stripe
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import Q
+from django.db import transaction
 from django.conf import settings
 from django.http import HttpResponse
-import stripe
 
 from .models import Appointment
 from .serializers import AppointmentSerializer, AppointmentCreateSerializer, AppointmentUpdateSerializer
@@ -23,7 +24,7 @@ def appointment_list(request):
         try:
             doctor = user.doctor_profile
             queryset = Appointment.objects.filter(doctor=doctor)
-        except:
+        except AttributeError:
             queryset = Appointment.objects.none()
     else:
         queryset = Appointment.objects.filter(patient=user)
@@ -53,8 +54,14 @@ def appointment_list(request):
     if date_to:
         queryset = queryset.filter(date__lte=date_to)
 
-    page = int(request.query_params.get('page', 1))
-    page_size = int(request.query_params.get('page_size', 20))
+    try:
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 20))
+    except (ValueError, TypeError):
+        page = 1
+        page_size = 20
+    page = max(page, 1)
+    page_size = max(page_size, 1)
     start = (page - 1) * page_size
     end = start + page_size
     queryset = queryset.order_by('-date', '-time')[start:end]
@@ -76,7 +83,7 @@ def appointment_detail(request, pk):
         try:
             if user.role == 'doctor' and user.doctor_profile != appointment.doctor:
                 return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
-        except:
+        except AttributeError:
             return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
 
     serializer = AppointmentSerializer(appointment)
@@ -110,18 +117,18 @@ def appointment_create(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    slot_taken = Appointment.objects.filter(
-        doctor=doctor,
-        date=date,
-        time_slot=time_slot,
-    ).exclude(status='cancelled').exists()
-    if slot_taken:
-        return Response(
-            {'error': 'This time slot is already booked'},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    appointment = serializer.save()
+    with transaction.atomic():
+        slot = Appointment.objects.select_for_update().filter(
+            doctor=doctor,
+            date=date,
+            time_slot=time_slot,
+        ).exclude(status='cancelled').first()
+        if slot:
+            return Response(
+                {'error': 'This time slot is already booked'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        appointment = serializer.save()
     out_serializer = AppointmentSerializer(appointment)
 
     try:
@@ -168,8 +175,11 @@ def appointment_update(request, pk):
         try:
             if user.role == 'doctor' and user.doctor_profile != appointment.doctor:
                 return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
-        except:
+        except AttributeError:
             return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
+
+    # Strip client-supplied paid field — only server can set it
+    request.data.pop('paid', None)
 
     serializer = AppointmentUpdateSerializer(appointment, data=request.data, partial=True)
     if not serializer.is_valid():

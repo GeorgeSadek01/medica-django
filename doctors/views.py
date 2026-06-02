@@ -61,7 +61,7 @@ def doctor_detail(request, pk):
 @permission_classes([AllowAny])
 def doctor_availability(request, pk):
     try:
-        doctor = DoctorProfile.objects.get(pk=pk)
+        doctor = DoctorProfile.objects.get(pk=pk, user__is_active=True)
     except DoctorProfile.DoesNotExist:
         return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
     blocks = doctor.availability.all()

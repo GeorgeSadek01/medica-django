@@ -8,7 +8,9 @@ class AvailabilityBlockSerializer(serializers.ModelSerializer):
         fields = ['id', 'day', 'start_time', 'end_time']
 
     def validate(self, attrs):
-        if attrs.get('start_time') and attrs.get('end_time') and attrs['start_time'] >= attrs['end_time']:
+        start = attrs.get('start_time')
+        end = attrs.get('end_time')
+        if start and end and start >= end:
             raise serializers.ValidationError('end_time must be after start_time')
         return attrs
 

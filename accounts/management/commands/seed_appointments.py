@@ -11,8 +11,9 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         try:
             patient = User.objects.get(email='patient@test.com')
-            doctor_user = User.objects.get(email='doctor@test.com')
-            doctor = DoctorProfile.objects.get(user=doctor_user)
+            doctor = DoctorProfile.objects.first()
+            if not doctor:
+                raise DoctorProfile.DoesNotExist
         except (User.DoesNotExist, DoctorProfile.DoesNotExist):
             self.stdout.write(self.style.ERROR('Run `python manage.py seed` first'))
             return
@@ -62,5 +63,5 @@ class Command(BaseCommand):
             self.stdout.write(f'  {status_icon} ID={a.id} | {a.date} {a.time} | {a.status} | paid={a.paid}')
         pending = [a for a in created if a.status == 'pending']
         if pending:
-            self.stdout.write(f'\nTest payment on pending appointment:')
+            self.stdout.write('\nTest payment on pending appointment:')
             self.stdout.write(f'  POST /api/appointments/{pending[0].id}/payment/')
