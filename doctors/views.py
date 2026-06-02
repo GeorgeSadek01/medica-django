@@ -250,8 +250,8 @@ def upload_documents(request):
     return Response({
         'id': doc.id,
         'status': doc.status,
-        'identity_document': doc.identity_document.url if doc.identity_document else None,
-        'medical_certificate': doc.medical_certificate.url if doc.medical_certificate else None,
+        'identity_document': request.build_absolute_uri(doc.identity_document.url) if doc.identity_document else None,
+        'medical_certificate': request.build_absolute_uri(doc.medical_certificate.url) if doc.medical_certificate else None,
         'uploaded_at': doc.uploaded_at.isoformat(),
     }, status=status.HTTP_201_CREATED)
 
@@ -278,8 +278,8 @@ def document_list(request):
             'doctor_name': f'{d.doctor.first_name} {d.doctor.last_name}',
             'doctor_email': d.doctor.user.email,
             'specialty': d.doctor.specialty,
-            'identity_document': d.identity_document.url if d.identity_document else None,
-            'medical_certificate': d.medical_certificate.url if d.medical_certificate else None,
+            'identity_document': request.build_absolute_uri(d.identity_document.url) if d.identity_document else None,
+            'medical_certificate': request.build_absolute_uri(d.medical_certificate.url) if d.medical_certificate else None,
             'status': d.status,
             'rejection_reason': d.rejection_reason,
             'uploaded_at': d.uploaded_at.isoformat(),
