@@ -41,7 +41,9 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     def get_bookedSlots(self, obj):
         from appointments.models import Appointment
         slots = {}
-        for apt in obj.appointments.exclude(status='cancelled').values('date', 'time'):
+        for apt in obj.appointments.filter(
+            status__in=[Appointment.Status.PENDING, Appointment.Status.CONFIRMED]
+        ).values('date', 'time'):
             date_str = apt['date'].strftime('%Y-%m-%d')
             time_str = apt['time'].strftime('%H:%M')
             slots.setdefault(date_str, []).append(time_str)

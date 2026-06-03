@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta
 
 import stripe
 from rest_framework import viewsets, status
@@ -36,6 +37,11 @@ def process_refund(appointment):
         return False
 
 
+def can_cancel(appointment):
+    appointment_dt = datetime.combine(appointment.date, appointment.time)
+    return datetime.now() < appointment_dt - timedelta(hours=24)
+
+
 def validate_transition(appointment, new_status):
     if new_status and new_status != appointment.status:
         allowed = ALLOWED_TRANSITIONS.get(appointment.status, [])
@@ -50,9 +56,11 @@ def can_user_set_status(user, appointment, new_status):
     if new_status == Appointment.Status.CANCELLED:
         if appointment.patient == user:
             allowed = ALLOWED_TRANSITIONS.get(appointment.status, [])
-            if Appointment.Status.CANCELLED in allowed:
-                return True, None
-            return False, "You can no longer cancel this appointment."
+            if Appointment.Status.CANCELLED not in allowed:
+                return False, "You can no longer cancel this appointment."
+            if not can_cancel(appointment):
+                return False, "Cancellation is only allowed at least 24 hours before the appointment."
+            return True, None
         if user.role == 'doctor':
             return True, None
         return False, "Not authorized to cancel this appointment."
@@ -246,7 +254,8 @@ def appointment_list_create(request):
                 doctor=doctor,
                 date=date,
                 time_slot=time_slot,
-            ).exclude(status='cancelled').first()
+                status__in=[Appointment.Status.PENDING, Appointment.Status.CONFIRMED],
+            ).first()
             if slot:
                 return Response(
                     {'error': 'This time slot is already booked'},
@@ -326,7 +335,7 @@ def appointment_detail_view(request, pk):
                 return Response({'error': err}, status=status.HTTP_403_FORBIDDEN)
 
             if status_value == Appointment.Status.CANCELLED and appointment.paid and appointment.stripe_payment_intent_id:
-                if user.role in ['doctor', 'admin']:
+                if user.role in ['doctor', 'admin', 'patient']:
                     refund_ok = process_refund(appointment)
                     if not refund_ok:
                         return Response({'error': 'Failed to process refund. Please try again or contact support.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -339,7 +348,8 @@ def appointment_detail_view(request, pk):
             slot_val = serializer.validated_data.get('time_slot', appointment.time_slot)
             slot_taken = Appointment.objects.filter(
                 doctor=doctor, date=date_val, time_slot=slot_val,
-            ).exclude(pk=appointment.pk).exclude(status='cancelled').exists()
+                status__in=[Appointment.Status.PENDING, Appointment.Status.CONFIRMED],
+            ).exclude(pk=appointment.pk).exists()
             if slot_taken:
                 return Response({'error': 'This time slot is already booked'}, status=status.HTTP_400_BAD_REQUEST)
 
