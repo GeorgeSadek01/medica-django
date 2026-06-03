@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils import timezone
@@ -8,9 +10,12 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import BasePermission
 from appointments.models import Appointment
 from appointments.serializers import AppointmentSerializer
+from accounts.email_service import EmailService
 
-from .models import DoctorProfile, AvailabilityBlock, DoctorDocument
-from .serializers import DoctorProfileSerializer, AvailabilityBlockSerializer
+from .models import DoctorProfile, AvailabilityBlock, DoctorDocument, DoctorReview
+from .serializers import DoctorProfileSerializer, AvailabilityBlockSerializer, DoctorReviewSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class IsDoctorUser(BasePermission):
@@ -106,11 +111,11 @@ def doctor_list(request):
     from django.db.models import Exists, OuterRef
     has_availability = AvailabilityBlock.objects.filter(doctor=OuterRef('pk'))
     queryset = DoctorProfile.objects.select_related('user').filter(
+        Exists(has_availability),
         user__is_active=True,
         user__verified=True,
         session_price__gt=0,
-        Exists(has_availability)
-    )
+    ).order_by('-average_rating', '-review_count')
     specialty = request.query_params.get('specialty')
     name = request.query_params.get('name')
     search = request.query_params.get('search')
@@ -330,12 +335,111 @@ def review_document(request, pk):
     user = doc.doctor.user
     if new_status == 'approved':
         user.verified = True
+        user.save(update_fields=['verified'])
+        try:
+            EmailService.send_doctor_approved(doc.doctor)
+        except Exception:
+            logger.exception("Failed to send approval email to doctor %s", user.email)
     else:
         user.verified = False
-    user.save(update_fields=['verified'])
+        user.save(update_fields=['verified'])
+        try:
+            EmailService.send_doctor_rejected(doc.doctor, reason=doc.rejection_reason)
+        except Exception:
+            logger.exception("Failed to send rejection email to doctor %s", user.email)
 
     return Response({
         'id': doc.id,
         'status': doc.status,
         'rejection_reason': doc.rejection_reason,
     })
+
+
+# ====== Doctor Reviews ======
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def review_list_create(request, pk):
+    try:
+        doctor = DoctorProfile.objects.get(pk=pk)
+    except DoctorProfile.DoesNotExist:
+        return Response({'error': 'Doctor not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        reviews = DoctorReview.objects.filter(doctor=doctor).select_related('patient')
+        serializer = DoctorReviewSerializer(reviews, many=True)
+        return Response(serializer.data)
+
+    if request.method == 'POST':
+        user = request.user
+        if not user.is_authenticated:
+            return Response({'error': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        if user.role != 'patient':
+            return Response({'error': 'Only patients can submit reviews.'}, status=status.HTTP_403_FORBIDDEN)
+
+        appointment_id = request.data.get('appointment')
+        if not appointment_id:
+            return Response({'error': 'appointment is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            appointment = Appointment.objects.get(
+                id=appointment_id,
+                patient=user,
+                doctor=doctor,
+                status=Appointment.Status.COMPLETED,
+            )
+        except Appointment.DoesNotExist:
+            return Response(
+                {'error': 'You can only review doctors for completed appointments.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if DoctorReview.objects.filter(appointment=appointment).exists():
+            return Response(
+                {'error': 'You have already reviewed this appointment.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = DoctorReviewSerializer(
+            data={**request.data, 'doctor': doctor.pk, 'patient': user.pk}
+        )
+        if not serializer.is_valid():
+            return Response({'error': 'Validation failed', 'field_errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save(doctor=doctor, patient=user, appointment=appointment)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def review_detail(request, pk):
+    try:
+        review = DoctorReview.objects.select_related('patient', 'doctor').get(pk=pk)
+    except DoctorReview.DoesNotExist:
+        return Response({'error': 'Review not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        serializer = DoctorReviewSerializer(review)
+        return Response(serializer.data)
+
+    if review.patient != request.user:
+        return Response({'error': 'You can only modify your own reviews.'}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == 'PATCH':
+        serializer = DoctorReviewSerializer(review, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({'error': 'Validation failed', 'field_errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(serializer.data)
+
+    if request.method == 'DELETE':
+        review.delete()
+        return Response({'deleted': True}, status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_reviews(request):
+    reviews = DoctorReview.objects.filter(patient=request.user).select_related('doctor', 'patient')
+    serializer = DoctorReviewSerializer(reviews, many=True)
+    return Response(serializer.data)

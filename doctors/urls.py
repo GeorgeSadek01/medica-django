@@ -13,7 +13,10 @@ urlpatterns = [
     path('<int:pk>/', views.doctor_detail, name='doctor-detail'),
     path('<int:pk>/availability/', views.doctor_availability, name='doctor-availability'),
     path('<int:pk>/availability/<int:slot_id>/', views.doctor_availability, name='doctor-availability-slot'),
+    path('<int:pk>/reviews/', views.review_list_create, name='doctor-reviews'),
     path('documents/upload/', views.upload_documents, name='doctor-document-upload'),
     path('documents/', views.document_list, name='doctor-document-list'),
     path('documents/<int:pk>/review/', views.review_document, name='doctor-document-review'),
+    path('reviews/mine/', views.my_reviews, name='my-reviews'),
+    path('reviews/<int:pk>/', views.review_detail, name='review-detail'),
 ]

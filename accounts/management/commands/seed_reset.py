@@ -33,9 +33,9 @@ class Command(BaseCommand):
         wed = next_weekday(today, 2)
 
         appointments_data = [
-            {'date': mon, 'time_slot': 1, 'time': '09:00', 'status': 'pending', 'paid': False, 'notes': 'Test payment'},
-            {'date': mon, 'time_slot': 2, 'time': '10:00', 'status': 'confirmed', 'paid': True, 'notes': ''},
-            {'date': wed, 'time_slot': 3, 'time': '14:00', 'status': 'confirmed', 'paid': True, 'notes': ''},
+            {'date': mon, 'time_slot': 1, 'time': '09:00', 'status': 'pending', 'paid': False, 'notes': 'Test payment — new patient intake'},
+            {'date': mon, 'time_slot': 2, 'time': '09:45', 'status': 'confirmed', 'paid': True, 'notes': ''},
+            {'date': wed, 'time_slot': 3, 'time': '09:00', 'status': 'confirmed', 'paid': True, 'notes': ''},
         ]
 
         created = []
@@ -57,7 +57,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS('Appointments seeded:'))
         for a in created:
-            self.stdout.write(f'  ID={a.id} | {a.date} {a.time} | {a.status} | paid={a.paid}')
-        self.stdout.write(f'\n  Doctor Profile ID to use: {doctor.pk}')
-        self.stdout.write('\n  To test payment on the pending one:')
+            self.stdout.write(f'  ID={a.id} | {a.date} {a.time} ({a.status}) | paid={a.paid}')
+        self.stdout.write(f'\n  Doctor: {doctor.first_name} {doctor.last_name} (ID={doctor.pk}, {doctor.session_duration} min slots)')
+        self.stdout.write(f'\n  To test payment on the pending one:')
         self.stdout.write(f'    POST /api/appointments/{created[0].id}/payment/')

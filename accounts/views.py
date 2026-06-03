@@ -7,13 +7,10 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
-from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Q, Count
-from django.template.loader import render_to_string
-from django.utils.html import strip_tags
-from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode
+from django.utils.encoding import force_str
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -25,39 +22,9 @@ from appointments.serializers import AppointmentSerializer
 from specialties.models import Specialty
 from .serializers import RegisterSerializer, UserSerializer, AdminUserUpdateSerializer
 from .models import User
+from .email_service import EmailService
 
 token_generator = PasswordResetTokenGenerator()
-
-
-def send_verification_email(user):
-    uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
-    token = token_generator.make_token(user)
-    verification_url = f"{settings.FRONTEND_URL}/verify-email?uidb64={uidb64}&token={token}"
-    logger.info("Verification URL for %s: %s", user.email, verification_url)
-    subject = 'Verify your Medica email address'
-    html = render_to_string('accounts/email_verification_email.html', {
-        'user': user,
-        'verification_url': verification_url,
-    })
-    text = strip_tags(html)
-    msg = EmailMultiAlternatives(subject, text, settings.DEFAULT_FROM_EMAIL, [user.email])
-    msg.attach_alternative(html, 'text/html')
-    msg.send()
-
-
-def send_password_reset_email(user):
-    uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
-    token = token_generator.make_token(user)
-    reset_url = f"{settings.FRONTEND_URL}/reset-password?uidb64={uidb64}&token={token}"
-    subject = 'Reset your Medica password'
-    html = render_to_string('accounts/password_reset_email.html', {
-        'user': user,
-        'reset_url': reset_url,
-    })
-    text = strip_tags(html)
-    msg = EmailMultiAlternatives(subject, text, settings.DEFAULT_FROM_EMAIL, [user.email])
-    msg.attach_alternative(html, 'text/html')
-    msg.send()
 
 
 @api_view(['POST'])
@@ -93,7 +60,7 @@ def register(request):
 
     if settings.EMAIL_HOST:
         try:
-            send_verification_email(user)
+            EmailService.send_verification_email(user)
         except Exception as e:
             logger.exception("Failed to send verification email to %s: %s: %s", user.email, type(e).__name__, e)
     else:
@@ -188,7 +155,7 @@ def password_reset(request):
         return Response({'message': 'If an account with this email exists, a password reset link has been sent.'})
 
     try:
-        send_password_reset_email(user)
+        EmailService.send_password_reset_email(user)
     except Exception:
         return Response({'error': 'Failed to send reset email. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -260,7 +227,7 @@ def resend_verification(request):
         return Response({'message': 'Email already verified'})
 
     try:
-        send_verification_email(user)
+        EmailService.send_verification_email(user)
     except Exception:
         return Response({'error': 'Failed to send verification email. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

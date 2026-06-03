@@ -20,10 +20,11 @@ class AppointmentSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'doctor', 'doctor_name', 'specialty', 'patient',
             'patient_name', 'date', 'time_slot', 'time',
-            'status', 'notes', 'doctor_notes', 'paid', 'created_at',
+            'status', 'notes', 'doctor_notes', 'paid',
+            'stripe_payment_intent_id', 'refunded', 'created_at',
             'allowed_next_statuses',
         ]
-        read_only_fields = ['id', 'patient', 'doctor_name', 'specialty', 'patient_name', 'status', 'allowed_next_statuses']
+        read_only_fields = ['id', 'patient', 'doctor_name', 'specialty', 'patient_name', 'status', 'allowed_next_statuses', 'stripe_payment_intent_id', 'refunded']
 
     def get_allowed_next_statuses(self, obj):
         return ALLOWED_TRANSITIONS.get(obj.status, [])
@@ -35,6 +36,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, data):
+        from datetime import datetime, timedelta
         doctor = data.get('doctor')
         date_val = data.get('date')
         time = data.get('time')
@@ -42,16 +44,23 @@ class AppointmentSerializer(serializers.ModelSerializer):
         if doctor and date_val and time:
             day_name = date_val.strftime('%A')
 
-            is_available = AvailabilityBlock.objects.filter(
+            matching_block = AvailabilityBlock.objects.filter(
                 doctor=doctor,
                 day=day_name,
                 start_time__lte=time,
                 end_time__gte=time
-            ).exists()
+            ).first()
 
-            if not is_available:
+            if not matching_block:
                 raise serializers.ValidationError(
                     f"Doctor is not available at this time on ({day_name})"
+                )
+
+            duration = doctor.session_duration
+            time_end = (datetime.combine(date_val, time) + timedelta(minutes=duration)).time()
+            if time_end > matching_block.end_time:
+                raise serializers.ValidationError(
+                    f"The appointment end time ({time_end.strftime('%H:%M')}) exceeds the available hours"
                 )
 
             is_booked = Appointment.objects.filter(
@@ -81,6 +90,7 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
+        from datetime import datetime, timedelta
         doctor = attrs.get('doctor')
         date_val = attrs.get('date')
         time = attrs.get('time')
@@ -90,8 +100,17 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
             blocks = AvailabilityBlock.objects.filter(doctor=doctor, day=day_name)
             if not blocks.exists():
                 raise serializers.ValidationError('The doctor has no availability on this day')
-            if not blocks.filter(start_time__lte=time, end_time__gte=time).exists():
+
+            matching_block = blocks.filter(start_time__lte=time, end_time__gte=time).first()
+            if not matching_block:
                 raise serializers.ValidationError("The requested time is outside the doctor's available hours")
+
+            duration = doctor.session_duration
+            time_end = (datetime.combine(date_val, time) + timedelta(minutes=duration)).time()
+            if time_end > matching_block.end_time:
+                raise serializers.ValidationError(
+                    f"The appointment end time ({time_end.strftime('%H:%M')}) exceeds the available hours"
+                )
 
         return attrs
 

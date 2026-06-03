@@ -4,7 +4,7 @@ from .models import DoctorProfile, AvailabilityBlock, DoctorDocument
 
 @admin.register(DoctorProfile)
 class DoctorProfileAdmin(admin.ModelAdmin):
-    list_display = ['first_name', 'last_name', 'specialty', 'session_price']
+    list_display = ['first_name', 'last_name', 'specialty', 'session_price', 'session_duration']
     list_filter = ['specialty']
     search_fields = ['first_name', 'last_name', 'specialty']
 

@@ -19,7 +19,6 @@ class Command(BaseCommand):
             return
 
         today = date.today()
-        weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
         def next_weekday(d, wday):
             days_ahead = wday - d.weekday()
@@ -27,14 +26,14 @@ class Command(BaseCommand):
                 days_ahead += 7
             return d + timedelta(days=days_ahead)
 
-        mon = next_weekday(today, 0)  # next Monday
-        wed = next_weekday(today, 2)  # next Wednesday
+        mon = next_weekday(today, 0)
+        wed = next_weekday(today, 2)
 
         appointments_data = [
-            {'date': mon, 'time_slot': 1, 'time': '09:00', 'status': 'pending', 'notes': 'First visit'},
-            {'date': mon, 'time_slot': 2, 'time': '10:00', 'status': 'confirmed', 'paid': True, 'notes': 'Follow up'},
-            {'date': wed, 'time_slot': 3, 'time': '14:00', 'status': 'completed', 'paid': True, 'notes': 'Checkup done'},
-            {'date': wed, 'time_slot': 4, 'time': '15:00', 'status': 'cancelled', 'notes': 'Patient cancelled'},
+            {'date': mon, 'time_slot': 1, 'time': '09:00', 'status': 'pending', 'paid': False, 'notes': 'First visit — routine checkup'},
+            {'date': mon, 'time_slot': 2, 'time': '09:45', 'status': 'confirmed', 'paid': True, 'notes': 'Follow up — lab results review'},
+            {'date': wed, 'time_slot': 3, 'time': '09:00', 'status': 'completed', 'paid': True, 'notes': 'Annual cardiac assessment'},
+            {'date': wed, 'time_slot': 4, 'time': '09:45', 'status': 'cancelled', 'paid': False, 'notes': 'Patient cancelled — rescheduled'},
         ]
 
         created = []
@@ -60,7 +59,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f'Created {len(created)} sample appointments:'))
         for a in created:
             status_icon = '🟡' if a.status == 'pending' else '🟢' if a.status == 'confirmed' else '✅' if a.status == 'completed' else '⚫'
-            self.stdout.write(f'  {status_icon} ID={a.id} | {a.date} {a.time} | {a.status} | paid={a.paid}')
+            self.stdout.write(f'  {status_icon} ID={a.id} | {a.date} {a.time} | {a.status} | paid={a.paid} | "{a.notes}"')
         pending = [a for a in created if a.status == 'pending']
         if pending:
             self.stdout.write('\nTest payment on pending appointment:')

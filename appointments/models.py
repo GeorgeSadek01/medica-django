@@ -29,6 +29,8 @@ class Appointment(models.Model):
     notes = models.TextField(default='', blank=True, max_length=500)
     doctor_notes = models.TextField(default='', blank=True)
     paid = models.BooleanField(default=False)
+    stripe_payment_intent_id = models.CharField(max_length=255, blank=True, default='')
+    refunded = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

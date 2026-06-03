@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+</head>
+<body style="font-family: Arial, sans-serif; padding: 20px;">
+    <h2>Appointment Cancelled by Patient</h2>
+    <p>Hi Dr. {{ doctor_name }},</p>
+    <p>The following appointment has been cancelled by the patient:</p>
+    <table style="margin: 16px 0;">
+        <tr><td><strong>Patient:</strong></td><td>{{ patient_name }}</td></tr>
+        <tr><td><strong>Specialty:</strong></td><td>{{ specialty }}</td></tr>
+        <tr><td><strong>Date:</strong></td><td>{{ date }}</td></tr>
+        <tr><td><strong>Time:</strong></td><td>{{ time }}</td></tr>
+    </table>
+    <p>This time slot is now available for other patients.</p>
+    <br>
+    <p>— Medica Team</p>
+</body>
+</html>

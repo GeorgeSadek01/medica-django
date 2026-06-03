@@ -1,3 +1,5 @@
+import logging
+
 import stripe
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
@@ -9,13 +11,29 @@ from django.db import transaction
 from django.conf import settings
 from django.http import HttpResponse
 
+from accounts.email_service import EmailService
 from .models import Appointment
 from .serializers import (
     AppointmentSerializer, AppointmentCreateSerializer, AppointmentUpdateSerializer,
     ALLOWED_TRANSITIONS,
 )
 
+logger = logging.getLogger(__name__)
+
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+
+def process_refund(appointment):
+    if not appointment.paid or not appointment.stripe_payment_intent_id:
+        return False
+    try:
+        stripe.Refund.create(payment_intent=appointment.stripe_payment_intent_id)
+        appointment.paid = False
+        appointment.refunded = True
+        appointment.save(update_fields=['paid', 'refunded'])
+        return True
+    except stripe.error.StripeError:
+        return False
 
 
 def validate_transition(appointment, new_status):
@@ -63,6 +81,10 @@ class DoctorAppointmentViewSet(viewsets.ModelViewSet):
             return Response({'error': err}, status=status.HTTP_400_BAD_REQUEST)
         appointment.status = Appointment.Status.CONFIRMED
         appointment.save()
+        try:
+            EmailService.send_appointment_confirmed(appointment)
+        except Exception:
+            logger.exception("Failed to send confirmation email for appointment %s", appointment.id)
         serializer = self.get_serializer(appointment)
         return Response({"message": "Appointment confirmed successfully", "appointment": serializer.data})
 
@@ -72,21 +94,40 @@ class DoctorAppointmentViewSet(viewsets.ModelViewSet):
         ok, err = validate_transition(appointment, Appointment.Status.CANCELLED)
         if not ok:
             return Response({'error': err}, status=status.HTTP_400_BAD_REQUEST)
+        refund_issued = False
+        if appointment.paid and appointment.stripe_payment_intent_id:
+            refund_issued = process_refund(appointment)
+            if not refund_issued:
+                return Response({'error': 'Failed to process refund. Please try again or contact support.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         appointment.status = Appointment.Status.CANCELLED
         appointment.save()
+        try:
+            EmailService.send_appointment_cancelled(appointment, cancelled_by_role='doctor')
+        except Exception:
+            logger.exception("Failed to send cancellation email for appointment %s", appointment.id)
         serializer = self.get_serializer(appointment)
-        return Response({"message": "Appointment cancelled successfully", "appointment": serializer.data})
+        msg = "Appointment cancelled successfully"
+        if refund_issued:
+            msg += " and refund has been issued."
+        return Response({"message": msg, "appointment": serializer.data})
 
     @action(detail=True, methods=['post'], url_path='add-notes')
     def add_doctor_notes(self, request, pk=None):
         appointment = self.get_object()
         notes = request.data.get('doctor_notes', '')
         appointment.doctor_notes = notes
+        was_completed = False
         if appointment.status == Appointment.Status.CONFIRMED:
             ok, err = validate_transition(appointment, Appointment.Status.COMPLETED)
             if ok:
                 appointment.status = Appointment.Status.COMPLETED
+                was_completed = True
         appointment.save()
+        if was_completed:
+            try:
+                EmailService.send_appointment_completed(appointment)
+            except Exception:
+                logger.exception("Failed to send completion email for appointment %s", appointment.id)
         serializer = self.get_serializer(appointment)
         msg = "Doctor notes saved."
         if appointment.status == Appointment.Status.COMPLETED:
@@ -284,6 +325,14 @@ def appointment_detail_view(request, pk):
             if not ok:
                 return Response({'error': err}, status=status.HTTP_403_FORBIDDEN)
 
+            if status_value == Appointment.Status.CANCELLED and appointment.paid and appointment.stripe_payment_intent_id:
+                if user.role in ['doctor', 'admin']:
+                    refund_ok = process_refund(appointment)
+                    if not refund_ok:
+                        return Response({'error': 'Failed to process refund. Please try again or contact support.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                else:
+                    return Response({'error': 'Cannot cancel a paid appointment. Please contact support.'}, status=status.HTTP_403_FORBIDDEN)
+
         if 'date' in serializer.validated_data or 'time_slot' in serializer.validated_data:
             doctor = appointment.doctor
             date_val = serializer.validated_data.get('date', appointment.date)
@@ -294,7 +343,14 @@ def appointment_detail_view(request, pk):
             if slot_taken:
                 return Response({'error': 'This time slot is already booked'}, status=status.HTTP_400_BAD_REQUEST)
 
+        old_status = appointment.status
         appointment = serializer.save()
+        if status_value == Appointment.Status.CANCELLED and old_status != Appointment.Status.CANCELLED:
+            try:
+                cancelled_by = 'patient' if user.role == 'patient' else user.role
+                EmailService.send_appointment_cancelled(appointment, cancelled_by_role=cancelled_by)
+            except Exception:
+                logger.exception("Failed to send cancellation email for appointment %s", appointment.id)
         out_serializer = AppointmentSerializer(appointment)
         return Response(out_serializer.data)
 
@@ -370,9 +426,16 @@ def confirm_payment(request, pk):
     except Exception as e:
         return Response({'error': f'Invalid session: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
+    appointment.stripe_payment_intent_id = session.get('payment_intent', '')
     appointment.status = Appointment.Status.CONFIRMED
     appointment.paid = True
     appointment.save()
+
+    try:
+        EmailService.send_payment_confirmation(appointment)
+        EmailService.send_appointment_confirmed(appointment)
+    except Exception:
+        logger.exception("Failed to send payment confirmation email for appointment %s", appointment.id)
 
     return Response(AppointmentSerializer(appointment).data)
 
@@ -394,9 +457,15 @@ def stripe_webhook(request):
         if appointment_id:
             try:
                 appointment = Appointment.objects.get(pk=appointment_id)
+                appointment.stripe_payment_intent_id = session.get('payment_intent', '')
                 appointment.status = Appointment.Status.CONFIRMED
                 appointment.paid = True
                 appointment.save()
+                try:
+                    EmailService.send_payment_confirmation(appointment)
+                    EmailService.send_appointment_confirmed(appointment)
+                except Exception:
+                    logger.exception("Failed to send payment confirmation email for appointment %s", appointment.id)
             except Appointment.DoesNotExist:
                 pass
 

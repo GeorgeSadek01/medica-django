@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+</head>
+<body style="font-family: Arial, sans-serif; padding: 20px;">
+    <h2>Appointment Cancelled</h2>
+    <p>Hi {{ user.first_name }},</p>
+    <p>Unfortunately, your appointment has been cancelled by the doctor.</p>
+    <table style="margin: 16px 0;">
+        <tr><td><strong>Doctor:</strong></td><td>Dr. {{ doctor_name }}</td></tr>
+        <tr><td><strong>Specialty:</strong></td><td>{{ specialty }}</td></tr>
+        <tr><td><strong>Date:</strong></td><td>{{ date }}</td></tr>
+        <tr><td><strong>Time:</strong></td><td>{{ time }}</td></tr>
+    </table>
+    <p>If you have already paid, a refund will be processed automatically. Please book another appointment at your convenience.</p>
+    <br>
+    <p>— Medica Team</p>
+</body>
+</html>

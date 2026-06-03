@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+</head>
+<body style="font-family: Arial, sans-serif; padding: 20px;">
+    <h2>Appointment Completed</h2>
+    <p>Hi {{ user.first_name }},</p>
+    <p>Your appointment with Dr. {{ doctor_name }} on {{ date }} at {{ time }} has been completed.</p>
+    <p>We hope you had a great experience. Please take a moment to leave a review:</p>
+    <p>
+        <a href="{{ review_url }}" style="display: inline-block; padding: 12px 24px; background-color: #1976d2; color: white; text-decoration: none; border-radius: 4px;">
+            Leave a Review
+        </a>
+    </p>
+    <br>
+    <p>— Medica Team</p>
+</body>
+</html>

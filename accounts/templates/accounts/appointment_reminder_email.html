@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+</head>
+<body style="font-family: Arial, sans-serif; padding: 20px;">
+    <h2>Appointment Reminder – Tomorrow</h2>
+    <p>Hi {{ user.first_name }},</p>
+    <p>This is a reminder that you have an appointment tomorrow:</p>
+    <table style="margin: 16px 0;">
+        <tr><td><strong>Doctor:</strong></td><td>Dr. {{ doctor_name }}</td></tr>
+        <tr><td><strong>Specialty:</strong></td><td>{{ specialty }}</td></tr>
+        <tr><td><strong>Date:</strong></td><td>{{ date }}</td></tr>
+        <tr><td><strong>Time:</strong></td><td>{{ time }}</td></tr>
+    </table>
+    <p>View doctor details:
+        <a href="{{ doctor_detail_url }}" style="color: #1976d2;">{{ doctor_detail_url }}</a>
+    </p>
+    <p>Please arrive on time. If you need to reschedule, please cancel at least 2 hours before your appointment.</p>
+    <br>
+    <p>— Medica Team</p>
+</body>
+</html>
